@@ -1,0 +1,7 @@
+# Secrets live in Vercel project settings, not in uploaded source.
+# The publishable key is safe in the browser bundle, but there is no reason to
+# ship the local .env — keep the build reading it from project env instead.
+.env
+.env.*
+node_modules
+dist
