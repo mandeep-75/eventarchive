@@ -8,9 +8,10 @@
     "build": "tsc -b && vite build",
     "lint": "oxlint",
     "preview": "vite preview",
-    "verify": "pnpm verify:lifecycle && pnpm verify:ui",
+    "verify": "pnpm verify:lifecycle && pnpm verify:sql && pnpm verify:ui",
     "verify:lifecycle": "node scripts/verify-lifecycle.mjs",
-    "verify:ui": "node scripts/smoke-ui.mjs"
+    "verify:ui": "node scripts/smoke-ui.mjs",
+    "verify:sql": "node scripts/verify-sql.mjs"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.117.2",

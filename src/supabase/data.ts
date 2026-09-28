@@ -173,7 +173,11 @@ export async function deleteDepartment(id: string) {
 
 // ─── Events ───────────────────────────────────────────────────────────────
 
-export async function createEvent(data: Omit<CollegeEvent, 'createdAt' | 'updatedAt'>) {
+// coordinatorName is omitted because the database stamps it from the caller's
+// own profile; see eventInsertRow.
+export async function createEvent(
+  data: Omit<CollegeEvent, 'createdAt' | 'updatedAt' | 'coordinatorName'>,
+) {
   const { error } = await supabase.from('events').insert(eventInsertRow(data))
   if (error) throw new Error(error.message)
 }

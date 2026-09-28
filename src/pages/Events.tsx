@@ -11,6 +11,7 @@ const STATUS_TABS: Array<{ value: EventStatus | 'all'; label: string }> = [
   { value: 'all', label: 'All' },
   { value: 'upcoming', label: 'Upcoming' },
   { value: 'ongoing', label: 'Ongoing' },
+  { value: 'awaiting_report', label: 'Awaiting report' },
   { value: 'completed', label: 'Completed' },
   { value: 'cancelled', label: 'Cancelled' },
 ]
@@ -22,7 +23,6 @@ export default function Events() {
 
   const status = (searchParams.get('status') as EventStatus | null) ?? 'all'
   const departmentId = searchParams.get('department') ?? 'all'
-  const scope = searchParams.get('scope') ?? 'all'
   const view = searchParams.get('view') === 'calendar' ? 'calendar' : 'list'
   const [search, setSearch] = useState('')
 
@@ -34,7 +34,6 @@ export default function Events() {
       .filter((i) =>
         departmentId === 'all' ? true : i.event.departmentId === departmentId,
       )
-      .filter((i) => (scope === 'mine' ? i.isMine : true))
       .filter((i) =>
         search
           ? i.event.title.toLowerCase().includes(search.toLowerCase()) ||
@@ -42,7 +41,7 @@ export default function Events() {
           : true,
       )
       .sort((a, b) => a.event.date.localeCompare(b.event.date))
-  }, [items, status, departmentId, scope, search])
+  }, [items, status, departmentId, search])
 
   function setParam(key: string, value: string) {
     const next = new URLSearchParams(searchParams)
@@ -65,15 +64,6 @@ export default function Events() {
               className="w-44 rounded-lg border border-gray-300 py-2 pl-9 pr-3 text-sm outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100"
             />
           </div>
-          <select
-            value={scope}
-            onChange={(e) => setParam('scope', e.target.value)}
-            aria-label="Whose events to show"
-            className="rounded-lg border border-gray-300 px-2 py-2 text-sm outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100"
-          >
-            <option value="all">All teachers</option>
-            <option value="mine">Only mine</option>
-          </select>
           <div className="relative">
             <ListFilter className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
             <select
@@ -157,15 +147,13 @@ export default function Events() {
         </div>
       ) : (
         <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
-          {filtered.map(({ event, status: s, pendingReport, cancelledReason, isMine }) => (
+          {filtered.map(({ event, status: s, cancelledReason }) => (
             <EventCard
               key={event.id}
               event={event}
               department={deptMap.get(event.departmentId)}
               status={s}
-              pendingReport={pendingReport}
               cancelledReason={cancelledReason}
-              isMine={isMine}
             />
           ))}
         </div>

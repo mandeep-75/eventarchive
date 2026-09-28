@@ -1,59 +1,22 @@
 import { useEffect, useMemo, useState } from 'react'
-import { subscribeEvents, updateEvent } from '../supabase/data'
+import { subscribeEvents } from '../supabase/data'
 import { useAuth } from '../context/AuthContext'
 import { useNow } from './useNow'
-import { planStatusSync, resolveStatus } from '../lib/eventStatus'
+import { resolveStatus } from '../lib/eventStatus'
+import { canManageEvent } from '../lib/permissions'
 import type { CancelReason, CollegeEvent, EventStatus } from '../types'
 
-/** An event paired with its lifecycle-resolved status and the viewer's relation to it. */
+/** An event paired with its worked-out status and whether the viewer may edit it. */
 export interface ListedEvent {
   event: CollegeEvent
   status: EventStatus
-  /** Finished but still inside the grace window with no report uploaded. */
-  pendingReport: boolean
   cancelledReason: CancelReason | null
-  isMine: boolean
-}
-
-const syncInFlight = new Set<string>()
-
-/**
- * Keeps the stored status of the signed-in teacher's own events in line with
- * the lifecycle rule. Only the owner's own events are ever written, and a
- * patch is only sent when the derived status actually disagrees, so this
- * settles after one pass instead of looping.
- */
-function useEventStatusSync(
-  events: CollegeEvent[],
-  uid: string | null | undefined,
-  now: Date,
-) {
-  useEffect(() => {
-    if (!uid) return
-
-    for (const patch of planStatusSync(events, uid, now)) {
-      const key = `${patch.id}:${patch.status}:${patch.cancelledReason ?? ''}`
-      if (syncInFlight.has(key)) continue
-      syncInFlight.add(key)
-
-      updateEvent(patch.id, {
-        status: patch.status,
-        cancelledReason: patch.cancelledReason,
-        cancelledAt: patch.cancelledAt,
-      })
-        .catch(() => {
-          // A failed sync only means the stored value lags; the UI already
-          // renders the derived status, so there is nothing to recover from.
-        })
-        .finally(() => {
-          syncInFlight.delete(key)
-        })
-    }
-  }, [events, uid, now])
+  /** The viewer's department owns this one, so the viewer may edit it. */
+  canManage: boolean
 }
 
 export function useEvents() {
-  const { user } = useAuth()
+  const { profile } = useAuth()
   const [events, setEvents] = useState<CollegeEvent[]>([])
   const [loading, setLoading] = useState(true)
   const now = useNow()
@@ -66,8 +29,9 @@ export function useEvents() {
     return () => unsub()
   }, [])
 
-  useEventStatusSync(events, user?.id, now)
-
+  // Statuses are worked out here so the list renders truthfully the moment a row
+  // arrives. Nothing is written back: there is no stored status to keep in step
+  // in the first place.
   const items = useMemo<ListedEvent[]>(
     () =>
       events.map((event) => {
@@ -75,12 +39,11 @@ export function useEvents() {
         return {
           event,
           status: resolved.status,
-          pendingReport: resolved.pendingReport,
           cancelledReason: resolved.reason,
-          isMine: event.coordinatorId === user?.id,
+          canManage: canManageEvent(event, profile?.departmentId),
         }
       }),
-    [events, user?.id, now],
+    [events, profile?.departmentId, now],
   )
 
   return { items, loading }

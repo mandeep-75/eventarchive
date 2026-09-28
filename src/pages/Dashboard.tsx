@@ -12,6 +12,7 @@ import {
 import { useAuth } from '../context/AuthContext'
 import { useEvents, type ListedEvent } from '../hooks/useEvents'
 import { useDepartments } from '../hooks/useDepartments'
+import { REPORT_GRACE_DAYS } from '../lib/eventStatus'
 import EventCard from '../components/EventCard'
 import EventStatus from '../components/EventStatus'
 
@@ -27,17 +28,21 @@ export default function Dashboard() {
       ongoing: items.filter((i) => i.status === 'ongoing').length,
       upcoming: items.filter((i) => i.status === 'upcoming').length,
       completed: items.filter((i) => i.status === 'completed').length,
-      pendingReport: items.filter((i) => i.pendingReport).length,
+      awaitingReport: items.filter((i) => i.status === 'awaiting_report').length,
       noReport: items.filter((i) => i.cancelledReason === 'no_report').length,
     }),
     [items],
   )
 
   const ongoing = items.filter((i) => i.status === 'ongoing')
-  const mine = useMemo(
+  // Newest first, across every department rather than filtered to the viewer.
+  // This replaced a "My Events" panel, which was a second list of the same
+  // department's events scoped to one person: on a department of any size it was
+  // either a duplicate of the list below it or an empty box, and the person it
+  // was about was the only thing on the page that was not about the archive.
+  const recent = useMemo(
     () =>
-      items
-        .filter((i) => i.isMine)
+      [...items]
         .sort((a, b) => b.event.date.localeCompare(a.event.date))
         .slice(0, 6),
     [items],
@@ -103,8 +108,8 @@ export default function Dashboard() {
         />
         <StatCard
           icon={<FileClock className="h-5 w-5 text-amber-600" />}
-          label="Report pending"
-          value={counts.pendingReport}
+          label="Awaiting report"
+          value={counts.awaitingReport}
           bg="bg-amber-50"
         />
         <StatCard
@@ -115,7 +120,7 @@ export default function Dashboard() {
         />
       </div>
 
-      {(counts.pendingReport > 0 || counts.noReport > 0) && (
+      {(counts.awaitingReport > 0 || counts.noReport > 0) && (
         <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800">
           {counts.noReport > 0 && (
             <p>
@@ -125,11 +130,11 @@ export default function Dashboard() {
               owner can still upload a report to restore {counts.noReport === 1 ? 'it' : 'them'}.
             </p>
           )}
-          {counts.pendingReport > 0 && (
+          {counts.awaitingReport > 0 && (
             <p className={counts.noReport > 0 ? 'mt-1' : ''}>
-              <span className="font-semibold">{counts.pendingReport}</span> event
-              {counts.pendingReport === 1 ? '' : 's'} finished within the 7 day grace
-              period. Upload the report to keep {counts.pendingReport === 1 ? 'it' : 'them'} from
+              <span className="font-semibold">{counts.awaitingReport}</span> event
+              {counts.awaitingReport === 1 ? '' : 's'} finished within the {REPORT_GRACE_DAYS} day
+              grace period. Upload the report to keep {counts.awaitingReport === 1 ? 'it' : 'them'} from
               being cancelled.
             </p>
           )}
@@ -138,33 +143,31 @@ export default function Dashboard() {
 
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
         <section className="space-y-3 lg:col-span-2">
-          <SectionHeader title="My Events" count={mine.length} to="/events" />
-          {mine.length === 0 ? (
-            <EmptyState text="You have not created any events yet" />
+          <SectionHeader title="Ongoing" count={ongoing.length} to="/events?status=ongoing" />
+          {ongoing.length === 0 ? (
+            <EmptyState text="No events running right now" />
           ) : (
-            <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-              {mine.map((item) => (
-                <EventCard
-                  key={item.event.id}
-                  event={item.event}
-                  department={getDepartment(item.event.departmentId)}
-                  status={item.status}
-                  pendingReport={item.pendingReport}
-                  cancelledReason={item.cancelledReason}
-                  isMine
-                />
+            <div className="space-y-2">
+              {ongoing.map((item) => (
+                <EventRow key={item.event.id} item={item} />
               ))}
             </div>
           )}
 
           <div className="pt-2">
-            <SectionHeader title="Ongoing" count={ongoing.length} to="/events?status=ongoing" />
-            {ongoing.length === 0 ? (
-              <EmptyState text="No events running right now" />
+            <SectionHeader title="Recently added" count={recent.length} to="/events" />
+            {recent.length === 0 ? (
+              <EmptyState text="No events yet" />
             ) : (
-              <div className="space-y-2">
-                {ongoing.map((item) => (
-                  <EventRow key={item.event.id} item={item} />
+              <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                {recent.map((item) => (
+                  <EventCard
+                    key={item.event.id}
+                    event={item.event}
+                    department={getDepartment(item.event.departmentId)}
+                    status={item.status}
+                    cancelledReason={item.cancelledReason}
+                  />
                 ))}
               </div>
             )}
@@ -254,8 +257,10 @@ function EventRow({ item }: { item: ListedEvent }) {
       className="flex items-center justify-between gap-4 rounded-xl border border-gray-200 bg-white p-4 shadow-sm transition hover:shadow-md"
     >
       <div className="min-w-0">
-        {item.isMine && <p className="text-xs font-medium text-indigo-600">Yours</p>}
         <h3 className="truncate font-semibold text-gray-900">{event.title}</h3>
+        <p className="mt-0.5 text-xs text-gray-500">
+          Created by {event.coordinatorName ?? 'a teacher'}
+        </p>
         <p className="mt-1 flex items-center gap-3 text-sm text-gray-500">
           <span className="inline-flex items-center gap-1">
             <MapPin className="h-3.5 w-3.5" /> {event.venue}
@@ -265,7 +270,6 @@ function EventRow({ item }: { item: ListedEvent }) {
       </div>
       <EventStatus
         status={item.status}
-        pendingReport={item.pendingReport}
         cancelledReason={item.cancelledReason}
       />
     </Link>

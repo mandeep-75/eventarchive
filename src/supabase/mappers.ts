@@ -1,3 +1,4 @@
+import { normalizeClock } from '../lib/eventStatus'
 import type { CollegeEvent, Department, UserProfile } from '../types'
 
 /**
@@ -52,14 +53,19 @@ export function toEvent(row: Row): CollegeEvent {
     title: row.title,
     departmentId: row.department_id,
     date: row.event_date,
-    startTime: row.start_time,
-    endTime: row.end_time,
+    // Trimmed on the way in, not just on the way out: a `time` column always
+    // answers `HH:mm:ss`, and the rest of the app treats these as a bare
+    // `HH:mm` — the time inputs, the display, and the format string the status
+    // rule parses. Normalising here is the one place that has to know the column
+    // is a `time` rather than text.
+    startTime: normalizeClock(row.start_time),
+    endTime: normalizeClock(row.end_time),
     venue: row.venue,
     description: row.description ?? '',
-    status: row.status,
     coverImage: row.cover_image ?? null,
     images: row.images ?? [],
     coordinatorId: row.coordinator_id,
+    coordinatorName: row.coordinator_name ?? null,
     cancelledReason: row.cancelled_reason ?? null,
     cancelledAt: isoOrNull(row.cancelled_at),
     guestSpeaker: row.guest_speaker ?? null,
@@ -84,7 +90,6 @@ export function fromEvent(patch: Partial<CollegeEvent>): Row {
   put('end_time', 'endTime')
   put('venue', 'venue')
   put('description', 'description')
-  put('status', 'status')
   put('cover_image', 'coverImage')
   put('images', 'images')
   put('cancelled_reason', 'cancelledReason')
@@ -93,6 +98,9 @@ export function fromEvent(patch: Partial<CollegeEvent>): Row {
   put('participant_count', 'participantCount')
   put('report', 'report')
   put('report_name', 'reportName')
+  // coordinator_name is deliberately absent: the database stamps it from the
+  // caller's own profile on insert, and a client that could send it would be
+  // crediting an event to whoever it liked.
   return out
 }
 
@@ -104,7 +112,10 @@ export function fromEvent(patch: Partial<CollegeEvent>): Row {
  * will later be filed under. The database default is only a fallback.
  */
 export function eventInsertRow(
-  data: Omit<CollegeEvent, 'createdAt' | 'updatedAt'>,
+  // coordinatorName is omitted for the same reason it is missing from fromEvent
+  // above: the database fills it in, so requiring a caller to pass it would only
+  // invite someone to satisfy the type.
+  data: Omit<CollegeEvent, 'createdAt' | 'updatedAt' | 'coordinatorName'>,
 ): Row {
   return {
     ...fromEvent(data),

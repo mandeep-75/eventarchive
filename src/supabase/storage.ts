@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { supabase } from './client'
 
 const BUCKET = 'event-media'
@@ -9,15 +9,15 @@ const SIGNED_URL_TTL = 60 * 60 * 24 * 7
 /**
  * Uploads land at `events/{eventId}/{uid}/{folder}/{file}`.
  *
- * The uploader's own id is part of the path and is taken from the signed-in
- * session rather than passed in, so a caller cannot file an upload under
- * someone else's folder. The storage policies in supabase/schema.sql cannot
- * read the events table to check ownership, so this path segment is what they
- * match on.
+ * The event id is segment 2, and that is the segment the storage policies read
+ * to work out which department owns the file — so it must stay at index 2 and
+ * must be the real event id. The uploader's own id follows it, taken from the
+ * signed-in session rather than passed in, so a caller cannot file an upload
+ * under someone else's folder.
  *
  * The returned value is the storage *path*, not a URL. The bucket is private so
  * that the "any signed-in teacher may read" rule in schema.sql actually applies;
- * render it through useSignedUrl / useSignedUrls below.
+ * render it through useSignedUrl (cover) or useOnDemandSigner (everything else).
  */
 async function pathFor(eventId: string, folder: string, fileName: string) {
   const { data } = await supabase.auth.getSession()
@@ -92,6 +92,69 @@ export async function signUrl(path: string | null | undefined): Promise<string |
 }
 
 /**
+ * Signs a path when someone asks for it, rather than when the page loads.
+ *
+ * A gallery holds a dozen photos and a report is often a multi-page PDF, and the
+ * storage policy lets any signed-in teacher read all of it — so signing a whole
+ * event's media on arrival means every teacher who opens the page pulls every
+ * file, whether or not they ever look at it. Nothing is fetched here either: this
+ * only mints the URL, and the file itself is requested by whoever opens it.
+ *
+ * The cover is the deliberate exception, in `useSignedUrl` below. It is the one
+ * image a list shows, so a card without it is not a card.
+ *
+ * Returns the URL rather than opening it, so the caller decides what "See" means:
+ * a photo is shown in its own tile, and a report is handed to a new tab because a
+ * document is not something to render inside a page.
+ *
+ * Results are cached by path for the life of the page, because a signature is
+ * good for `SIGNED_URL_TTL` and re-opening the same photo should not ask again —
+ * so a second view is immediate and never touches the network.
+ *
+ * `urls` holds everything signed so far, so a gallery tile can render the photo
+ * it asked for without the component keeping its own copy. It is a map rather than
+ * one string because a teacher can open several tiles in a row, and `pending` is a
+ * map for the same reason: a single slot would make a second tile look idle while
+ * the first was still loading, and clicking it would then be a no-op.
+ */
+export function useOnDemandSigner() {
+  const cache = useRef<Record<string, string>>({})
+  const [urls, setUrls] = useState<Record<string, string>>({})
+  const [pending, setPending] = useState<Record<string, boolean>>({})
+  const [error, setError] = useState('')
+
+  const sign = useCallback(async (path: string): Promise<string | null> => {
+    const cached = cache.current[path]
+    if (cached) return cached
+    setError('')
+    setPending((p) => ({ ...p, [path]: true }))
+    try {
+      const url = await signUrl(path)
+      if (!url) {
+        setError(
+          'That file could not be opened. It may have been removed, or you may not have access.',
+        )
+        return null
+      }
+      cache.current[path] = url
+      setUrls((u) => ({ ...u, [path]: url }))
+      return url
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'That file could not be opened.')
+      return null
+    } finally {
+      setPending((p) => {
+        const next = { ...p }
+        delete next[path]
+        return next
+      })
+    }
+  }, [])
+
+  return { sign, urls, pending, error }
+}
+
+/**
  * Signs one path for display.
  *
  * The result is keyed by the path it was signed for, so switching to a different
@@ -114,29 +177,4 @@ export function useSignedUrl(path: string | null | undefined) {
   }, [path])
 
   return signed && signed.path === path ? signed.url : null
-}
-
-/** Same, for a gallery: signs every path and returns a path-keyed map. */
-export function useSignedUrls(paths: string[]) {
-  const key = paths.join('\u0000')
-  const list = useMemo(() => (key ? key.split('\u0000') : []), [key])
-  const [urls, setUrls] = useState<Record<string, string>>({})
-
-  useEffect(() => {
-    if (!list.length) return
-    let cancelled = false
-    void Promise.all(list.map(async (p) => [p, await signUrl(p)] as const)).then(
-      (pairs) => {
-        if (cancelled) return
-        setUrls(
-          Object.fromEntries(pairs.filter((pair): pair is [string, string] => !!pair[1])),
-        )
-      },
-    )
-    return () => {
-      cancelled = true
-    }
-  }, [list])
-
-  return urls
 }

@@ -114,9 +114,11 @@ export default function EventCalendar({ items }: { items: ListedEvent[] }) {
                             ? 'bg-green-500'
                             : item.status === 'upcoming'
                               ? 'bg-blue-500'
-                              : item.status === 'cancelled'
-                                ? 'bg-red-400'
-                                : 'bg-gray-300'
+                              : item.status === 'awaiting_report'
+                                ? 'bg-amber-500'
+                                : item.status === 'cancelled'
+                                  ? 'bg-red-400'
+                                  : 'bg-gray-300'
                         }`}
                       />
                     ))}
@@ -151,7 +153,8 @@ export default function EventCalendar({ items }: { items: ListedEvent[] }) {
                 <div className="min-w-0">
                   <p className="text-xs font-medium text-indigo-600">
                     {deptMap.get(item.event.departmentId)?.name ?? 'Unknown'}
-                    {item.isMine && ' · yours'}
+                    {' · '}
+                    {item.event.coordinatorName ?? 'a teacher'}
                   </p>
                   <h3 className="truncate font-semibold text-gray-900">{item.event.title}</h3>
                   <p className="text-sm text-gray-500">
@@ -160,7 +163,6 @@ export default function EventCalendar({ items }: { items: ListedEvent[] }) {
                 </div>
                 <EventStatus
                   status={item.status}
-                  pendingReport={item.pendingReport}
                   cancelledReason={item.cancelledReason}
                 />
               </Link>

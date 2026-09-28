@@ -10,12 +10,19 @@ Built with React + TypeScript + Vite, on **Supabase** (Postgres + Auth + Storage
 - **One user type, `teacher`.** A `is_manager` flag on the profile is what
   unlocks the Setup screen; it is never set from the UI.
 - **Every signed-in teacher can read every event**, so departments can see each
-  other's work. Only the teacher who created an event may change or delete it.
-- **Events are filed under your own department**, fixed at creation, along with
-  the owning teacher. Neither can be reassigned later.
-- **Status is derived from the date** — upcoming, ongoing, completed, or
-  cancelled — and reconciled into the stored value so filters and the calendar
-  agree with the clock rather than with a stale field.
+  other's work.
+- **Any teacher can edit an event belonging to their own department**, not only
+  the one who created it. Creating is still personal: you own what you file, and
+  an event's department and creator are fixed at creation.
+- **Status is worked out from the date and times**, never stored — upcoming,
+  ongoing, awaiting report, completed, or cancelled. The database holds the
+  event's date and times; each page compares them to the clock when it renders,
+  so a status can never fall behind the date it is meant to describe.
+- **An event is only completed once a report has been uploaded for it.** Between
+  the end of the event and `REPORT_GRACE_DAYS` (10) it reads *Awaiting report*,
+  and after that it is cancelled for want of a report. Change the constant in
+  `src/lib/eventStatus.ts` to adjust the window — it is the same number
+  everywhere, including the copy on the page.
 
 ## Setup
 
@@ -35,6 +42,26 @@ the three tables to the realtime publication.
 > The realtime lines are not optional. Without them, subscriptions connect
 > successfully and silently never deliver an update, which looks exactly like a
 > broken app.
+
+#### Starting over
+
+To wipe the data and rebuild the tables, run `supabase/reset.sql` in the SQL
+editor and then run `schema.sql` again. Two pastes, in that order — `reset.sql`
+only drops, and the table definitions live in `schema.sql`.
+
+`auth.users` is left alone, so existing accounts can still sign in; their
+profiles are rebuilt automatically but come back with no department, and a
+manager has to place them. Departments and every event are gone. Uploaded covers
+and reports are untouched, since those files are not in the database.
+
+`reset.sql` is a separate file on purpose. `schema.sql` is pasted on every
+column or policy change, so a `drop table` sitting in it would destroy the
+project's data every time someone changed a column.
+
+Event times are stored as a bare date and `HH:mm` with no time zone, so the zone
+they belong to is stated once, as `EVENT_TIME_ZONE` in
+`src/lib/eventStatus.ts`. It is pinned rather than read from the visitor's
+device, so a laptop set to UTC sees the same times as one set to IST.
 
 ### 3. Point the app at it
 
@@ -87,10 +114,25 @@ Enforced in Postgres, not in the UI — hiding a button is not access control.
 
 | Table | Read | Write |
 | --- | --- | --- |
-| `events` | any signed-in teacher | owner only; owner and department fixed at creation |
+| `events` | any signed-in teacher | your own department; creator and department fixed at creation |
 | `departments` | any signed-in teacher | managers only |
 | `profiles` | yourself, or any manager | managers only |
-| `event-media` (storage) | any signed-in teacher | your own `{uid}` folder only |
+| `event-media` (storage) | any signed-in teacher | your own `{uid}` folder, or any event your department owns |
+
+Creating an event is still personal: `events_insert` requires
+`coordinator_id = auth.uid()`, so you own what you file. Only editing and
+deleting are department-wide.
+
+Each event shows **Created by** with the filer's full name. The name is copied
+onto the event at creation by a trigger, because a teacher can only read their
+own profile row and so the browser cannot look up a colleague's name. A value
+sent by the client is overwritten, and a name already on an event cannot be
+changed afterwards.
+
+`events_update` has both a `using` and a `with check` naming `my_department()`.
+The `using` decides whose rows you can write; the `with check` is what stops you
+moving an event into a department you do not belong to and carrying on writing to
+it. `using` alone would allow that.
 
 The `events_pin_immutable` trigger holds the owning teacher and department
 fixed. This has to be a trigger rather than more policy conditions: inside
@@ -119,12 +161,12 @@ src/
   supabase/     client, auth, data access, storage, row mappers
   context/      AuthContext — session + profile
   hooks/        useEvents, useDepartments, useNow
-  lib/          eventStatus (lifecycle), ownership
+  lib/          eventStatus (worked out from the date), permissions
   pages/        Login, Dashboard, Events, EventDetails, Create/EditEvent, Setup
 supabase/
   schema.sql    tables, RLS, storage policies, realtime publication
+  reset.sql     drops the tables so schema.sql can rebuild them (on purpose)
   functions/    create-teacher
-```
 
 Postgres columns are `snake_case` and the app is `camelCase`; every row crosses
 that boundary in `src/supabase/mappers.ts`.

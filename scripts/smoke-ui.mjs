@@ -179,7 +179,7 @@ try {
   // ── 2. Everything below needs a signed-in teacher ──────────────────────
   if (!EMAIL || !PASSWORD) {
     skip(
-      'authenticated suite (nav, Setup, create form, lifecycle, ownership)',
+      'authenticated suite (nav, Setup, create form, lifecycle, department access)',
       'set SMOKE_EMAIL and SMOKE_PASSWORD to run it',
     )
     console.log(failed === 0 ? '\nALL PASS' : `\n${failed} FAILURE(S)`)
@@ -242,7 +242,7 @@ try {
     `document.querySelector('${CARD_SEL}')?.getAttribute('href') ?? null`,
   )
   if (!probe) {
-    skip('event detail, owner gating, cancel & report flows', 'no events in the project')
+    skip('event detail, department gating, cancel & report flows', 'no events in the project')
   } else {
     await goto(BASE + probe)
     await waitForText('Back to events')
@@ -251,17 +251,17 @@ try {
     check('lifecycle explanation shown', detail.includes('worked out from the date'), detail.slice(0, 200))
     const hasEdit = detail.includes('Edit')
     const saysViewOnly = detail.includes('not edit')
-    check('ownership gated correctly', hasEdit ? true : saysViewOnly, `edit=${hasEdit} viewOnly=${saysViewOnly}`)
+    check('edit affordances follow the department rule', hasEdit ? true : saysViewOnly, `edit=${hasEdit} viewOnly=${saysViewOnly}`)
     check('no dead "replace report via Edit" hint', !detail.includes('replace report via Edit'))
 
     await goto(BASE + probe + '/edit')
     await waitForText('Back to event')
     const editBody = await text()
     if (hasEdit) {
-      check('owner gets the edit form', editBody.includes('Save Changes'), editBody.slice(0, 200))
+      check('a manager of the event gets the edit form', editBody.includes('Save Changes'), editBody.slice(0, 200))
     } else {
-      check('edit route blocks a non-owner', editBody.includes('You cannot edit this event'), editBody.slice(0, 200))
-      check('non-owner gets no save form', !editBody.includes('Save Changes'), 'form leaked')
+      check('edit route blocks another department', editBody.includes('You cannot edit this event'), editBody.slice(0, 200))
+      check('blocked viewer gets no save form', !editBody.includes('Save Changes'), 'form leaked')
     }
   }
 

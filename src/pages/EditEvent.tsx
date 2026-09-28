@@ -5,12 +5,14 @@ import { getEvent, updateEvent } from '../supabase/data'
 import { uploadCoverImage } from '../supabase/storage'
 import { useAuth } from '../context/AuthContext'
 import { useDepartments } from '../hooks/useDepartments'
-import { isEventOwner } from '../lib/ownership'
+import { canManageEvent } from '../lib/permissions'
 import { resolveStatus } from '../lib/eventStatus'
+import { LIMITS, checkImageFile, validateEvent } from '../lib/eventInput'
+import { STATUS_LABELS } from '../types'
 
 export default function EditEvent() {
   const { id } = useParams<{ id: string }>()
-  const { user } = useAuth()
+  const { profile } = useAuth()
   const { getDepartment } = useDepartments()
   const navigate = useNavigate()
 
@@ -25,22 +27,27 @@ export default function EditEvent() {
   const [venue, setVenue] = useState('')
   const [description, setDescription] = useState('')
   const [guestSpeaker, setGuestSpeaker] = useState('')
-  const [participantCount, setParticipantCount] = useState('')
   const [coverFile, setCoverFile] = useState<File | null>(null)
   const [coverPreview, setCoverPreview] = useState<string | null>(null)
   const [existingCover, setExistingCover] = useState<string | null>(null)
+  const [hasReport, setHasReport] = useState(false)
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState('')
 
   useEffect(() => {
     if (!id) return
+    // Wait for the profile: the department check below needs it, and a null
+    // profile would otherwise look like "not your department" and lock the page
+    // for a teacher who does in fact own the event. The event and the profile
+    // arrive on separate subscriptions, so either can be last.
+    if (!profile) return
     getEvent(id).then((e) => {
       if (!e) {
         setNotFound(true)
         setLoadingEvent(false)
         return
       }
-      if (!isEventOwner(e, user?.id)) {
+      if (!canManageEvent(e, profile.departmentId)) {
         setForbidden(true)
         setLoadingEvent(false)
         return
@@ -53,17 +60,24 @@ export default function EditEvent() {
       setVenue(e.venue)
       setDescription(e.description)
       setGuestSpeaker(e.guestSpeaker ?? '')
-      setParticipantCount(
-        e.participantCount !== undefined ? String(e.participantCount) : '',
-      )
+      // Kept so the status preview below reflects a report that already exists.
+      // Without it, editing an event whose report was filed predicts it is about
+      // to be cancelled for want of one.
+      setHasReport(Boolean(e.report))
       setExistingCover(e.coverImage)
       setLoadingEvent(false)
     })
-  }, [id, user?.id])
+  }, [id, profile])
 
   function handleCoverChange(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0]
     if (!file) return
+    const image = checkImageFile(file)
+    setError(image.ok ? '' : image.error)
+    if (!image.ok) {
+      e.target.value = ''
+      return
+    }
     setCoverFile(file)
     const reader = new FileReader()
     reader.onload = () => setCoverPreview(reader.result as string)
@@ -72,7 +86,14 @@ export default function EditEvent() {
 
   const projectedStatus =
     date && startTime && endTime
-      ? resolveStatus({ date, startTime, endTime, report: null, status: 'upcoming' }).status
+      ? resolveStatus({
+          date,
+          startTime,
+          endTime,
+          // A report already on the event counts, or the preview would warn
+          // that an event with its report filed is about to be cancelled.
+          report: hasReport ? 'on file' : null,
+        }).status
       : null
 
   async function handleSubmit(e: FormEvent) {
@@ -80,10 +101,21 @@ export default function EditEvent() {
     if (!id) return
     setError('')
 
-    if (endTime <= startTime) {
-      setError('End time must be after the start time')
+    // Shared with CreateEvent, so the two forms cannot drift apart.
+    const checked = validateEvent({
+      title,
+      date,
+      startTime,
+      endTime,
+      venue,
+      description,
+      guestSpeaker,
+    })
+    if (!checked.ok) {
+      setError(checked.error)
       return
     }
+    const value = checked.value
 
     setSubmitting(true)
     try {
@@ -92,22 +124,11 @@ export default function EditEvent() {
         coverUrl = await uploadCoverImage(id, coverFile)
       }
 
-      const participants = participantCount.trim()
-        ? Number(participantCount)
-        : undefined
-
       // departmentId is deliberately absent: it is fixed at creation, and the
       // events_pin_immutable trigger rejects any attempt to change it.
       await updateEvent(id, {
-        title,
-        date,
-        startTime,
-        endTime,
-        venue,
-        description,
+        ...value,
         coverImage: coverUrl,
-        guestSpeaker: guestSpeaker.trim() || null,
-        participantCount: Number.isFinite(participants) ? participants : null,
       })
 
       navigate(`/events/${id}`)
@@ -132,7 +153,7 @@ export default function EditEvent() {
           <p className="mt-2 text-sm text-gray-500">
             {notFound
               ? 'It may have been deleted.'
-              : 'Only the teacher who created an event can change it. You can still view it.'}
+              : 'Only teachers in the department that owns an event can change it. You can still view it.'}
           </p>
         </div>
         <div className="text-center">
@@ -163,6 +184,7 @@ export default function EditEvent() {
             id="ed-title"
             type="text"
             required
+            maxLength={LIMITS.title}
             value={title}
             onChange={(e) => setTitle(e.target.value)}
             className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100"
@@ -184,7 +206,7 @@ export default function EditEvent() {
             <p className="flex items-start gap-2 rounded-lg bg-gray-50 px-3 py-2 text-sm text-gray-600">
               <Info className="mt-0.5 h-3.5 w-3.5 shrink-0 text-gray-400" />
               {projectedStatus
-                ? `Will be “${projectedStatus}” based on the date, or cancelled if no report is uploaded.`
+                ? `Will be “${STATUS_LABELS[projectedStatus]}” based on the date.${hasReport ? '' : ' Without a report it is cancelled once the grace period ends.'}`
                 : 'Worked out automatically from the date.'}
             </p>
           </div>
@@ -240,41 +262,25 @@ export default function EditEvent() {
             id="ed-venue"
             type="text"
             required
+            maxLength={LIMITS.venue}
             value={venue}
             onChange={(e) => setVenue(e.target.value)}
             className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100"
           />
         </div>
 
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-          <div>
-            <label htmlFor="ed-speaker" className="mb-1 block text-sm font-medium text-gray-700">
-              Guest / Speaker
-            </label>
-            <input
-              id="ed-speaker"
-              type="text"
-              value={guestSpeaker}
-              onChange={(e) => setGuestSpeaker(e.target.value)}
-              className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100"
-            />
-          </div>
-          <div>
-            <label
-              htmlFor="ed-participants"
-              className="mb-1 block text-sm font-medium text-gray-700"
-            >
-              Participants
-            </label>
-            <input
-              id="ed-participants"
-              type="number"
-              min={0}
-              value={participantCount}
-              onChange={(e) => setParticipantCount(e.target.value)}
-              className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100"
-            />
-          </div>
+        <div>
+          <label htmlFor="ed-speaker" className="mb-1 block text-sm font-medium text-gray-700">
+            Guest / Speaker
+          </label>
+          <input
+            id="ed-speaker"
+            type="text"
+            maxLength={LIMITS.guestSpeaker}
+            value={guestSpeaker}
+            onChange={(e) => setGuestSpeaker(e.target.value)}
+            className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100"
+          />
         </div>
 
         <div>
@@ -284,6 +290,7 @@ export default function EditEvent() {
           <textarea
             id="ed-desc"
             rows={3}
+            maxLength={LIMITS.description}
             value={description}
             onChange={(e) => setDescription(e.target.value)}
             className="w-full resize-none rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100"

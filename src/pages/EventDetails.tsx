@@ -6,6 +6,7 @@ import {
   CalendarDays,
   Clock,
   ExternalLink,
+  Eye,
   FileText,
   ImagePlus,
   MapPin,
@@ -21,15 +22,17 @@ import { getEvent, deleteEvent, updateEvent } from '../supabase/data'
 import {
   uploadEventImage,
   uploadReport,
+  useOnDemandSigner,
   useSignedUrl,
-  useSignedUrls,
 } from '../supabase/storage'
 import { useDepartments } from '../hooks/useDepartments'
 import { useNow } from '../hooks/useNow'
 import { useAuth } from '../context/AuthContext'
 import EventStatus from '../components/EventStatus'
-import { isEventOwner } from '../lib/ownership'
-import { eventEnd, resolveStatus } from '../lib/eventStatus'
+import NoImage from '../components/NoImage'
+import { canManageEvent } from '../lib/permissions'
+import { REPORT_GRACE_DAYS, eventEnd, resolveStatus } from '../lib/eventStatus'
+import { checkImageFile, checkReportFile } from '../lib/eventInput'
 import { CANCEL_REASON_LABELS, type CollegeEvent } from '../types'
 
 // External tool the department uses to draft the write-up before it is
@@ -38,11 +41,14 @@ const REPORT_MAKER_URL = 'https://report-maker-rho.vercel.app/'
 
 export default function EventDetails() {
   const { id } = useParams<{ id: string }>()
-  const { user } = useAuth()
+  const { profile } = useAuth()
   const [event, setEvent] = useState<CollegeEvent | null>(null)
   const [loading, setLoading] = useState(true)
   const [uploading, setUploading] = useState(false)
   const [notice, setNotice] = useState('')
+  // Separate from `notice`, so a success does not have to be edited out before
+  // a failure can be shown.
+  const [error, setError] = useState('')
   const imageInputRef = useRef<HTMLInputElement>(null)
   const reportInputRef = useRef<HTMLInputElement>(null)
   const { getDepartment } = useDepartments()
@@ -62,12 +68,13 @@ export default function EventDetails() {
   // Media is stored as a private-bucket path, so each render site signs it
   // first rather than the database holding a temporary URL. These sit above
   // the early returns below, which would otherwise run hooks conditionally.
+  //
+  // The cover is signed on arrival because the list shows it and a card without
+  // a picture is not a card. The gallery and the report are not: they are signed
+  // when a teacher actually opens one, so nobody pulls every photo and every
+  // report off storage just by looking at an event.
   const coverUrl = useSignedUrl(event?.coverImage)
-  const galleryUrls = useSignedUrls(event?.images ?? [])
-  const reportUrl = useSignedUrl(event?.report)
-  // Only paths that actually signed get an <img>; a failed signature would
-  // otherwise render a broken image box.
-  const signedGallery = Object.entries(galleryUrls)
+  const media = useOnDemandSigner()
 
   if (loading) {
     return <div className="h-64 animate-pulse rounded-xl bg-gray-200" />
@@ -83,7 +90,7 @@ export default function EventDetails() {
 
   const current = event
   const department = getDepartment(current.departmentId)
-  const isOwner = isEventOwner(current, user?.id)
+  const canManage = canManageEvent(current, profile?.departmentId)
   const isManuallyCancelled = current.cancelledReason === 'manual'
   // Once the end time has passed the only question left is whether a report
   // closes the event off or it gets called off, so those two actions get their
@@ -109,8 +116,12 @@ export default function EventDetails() {
 
   async function handleDelete() {
     if (!confirm(`Delete "${current.title}"? This cannot be undone.`)) return
-    await deleteEvent(current.id)
-    navigate('/events')
+    try {
+      await deleteEvent(current.id)
+      navigate('/events')
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not delete the event.')
+    }
   }
 
   async function handleCancel() {
@@ -120,24 +131,52 @@ export default function EventDetails() {
       )
     )
       return
-    await patch({ status: 'cancelled', cancelledReason: 'manual', cancelledAt: new Date() })
-    setNotice('Event cancelled.')
+    // Only the reason and the timestamp are stored. Cancelled is a thing a
+    // person did, so it is recorded; upcoming/ongoing/completed are not, they
+    // come from the clock.
+    try {
+      await patch({ cancelledReason: 'manual', cancelledAt: new Date() })
+      setError('')
+      setNotice('Event cancelled.')
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not cancel the event.')
+    }
   }
 
   async function handleRestore() {
-    await patch({ status: 'upcoming', cancelledReason: null, cancelledAt: null })
-    setNotice('Cancellation removed. The status is derived from the date again.')
+    try {
+      await patch({ cancelledReason: null, cancelledAt: null })
+      setError('')
+      setNotice('Cancellation removed. The status is derived from the date again.')
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not restore the event.')
+    }
   }
 
   async function handleAddImages(files: FileList | null) {
     if (!id || !files || files.length === 0) return
+    const chosen = Array.from(files)
+    // Checked up front so one bad file does not leave half the batch uploaded
+    // and no explanation on screen.
+    for (const file of chosen) {
+      const image = checkImageFile(file)
+      if (!image.ok) {
+        setError(image.error)
+        if (imageInputRef.current) imageInputRef.current.value = ''
+        return
+      }
+    }
+    setError('')
     setUploading(true)
     try {
       const urls: string[] = []
-      for (const file of Array.from(files)) {
+      for (const file of chosen) {
         urls.push(await uploadEventImage(id, file, Date.now()))
       }
       await patch({ images: [...current.images, ...urls] })
+      setNotice(`Added ${urls.length} image${urls.length === 1 ? '' : 's'}.`)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not upload those images.')
     } finally {
       setUploading(false)
       if (imageInputRef.current) imageInputRef.current.value = ''
@@ -146,23 +185,32 @@ export default function EventDetails() {
 
   async function handleUploadReport(file: File | null) {
     if (!id || !file) return
+    const allowed = checkReportFile(file)
+    if (!allowed.ok) {
+      setError(allowed.error)
+      if (reportInputRef.current) reportInputRef.current.value = ''
+      return
+    }
+    setError('')
     setUploading(true)
     try {
       const url = await uploadReport(id, file)
-      // A report means the event is no longer report-less, so a cancellation
-      // that the lifecycle rule applied is cleared as soon as it lands. The
-      // status moves to completed too, otherwise the cleared reason would leave
-      // a stale 'cancelled' behind for the next reader to interpret.
-      const clearsAutoCancel =
-        current.cancelledReason === 'no_report' || current.status === 'cancelled'
+      // A report means the event actually happened, so any cancellation is
+      // dropped: a hand-made one would otherwise keep the page reading
+      // "cancelled" right next to a filed report, and a no_report one is worked
+      // out from the missing report in the first place. Nothing else is written
+      // — the status is decided by the date and the report from here on.
       await patch({
         report: url,
         reportName: file.name,
-        ...(clearsAutoCancel
-          ? { status: 'completed' as const, cancelledReason: null, cancelledAt: null }
-          : {}),
+        cancelledReason: null,
+        cancelledAt: null,
       })
       setNotice('Report uploaded.')
+    } catch (err) {
+      // Without this the failure is an unhandled rejection: the spinner stops
+      // and the page says nothing at all about why the upload did not happen.
+      setError(err instanceof Error ? err.message : 'Could not upload the report.')
     } finally {
       setUploading(false)
       if (reportInputRef.current) reportInputRef.current.value = ''
@@ -182,16 +230,27 @@ export default function EventDetails() {
         <p className="rounded-lg bg-indigo-50 px-3 py-2 text-sm text-indigo-700">{notice}</p>
       )}
 
+      {error && (
+        <p
+          role="alert"
+          className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700"
+        >
+          {error}
+        </p>
+      )}
+
       <article className="overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm">
-        {coverUrl && (
-          <div className="h-48 w-full bg-gray-100 sm:h-64">
+        <div className="h-48 w-full sm:h-64">
+          {coverUrl ? (
             <img
               src={coverUrl}
               alt={current.title}
               className="h-full w-full object-cover"
             />
-          </div>
-        )}
+          ) : (
+            <NoImage className="h-full w-full" label="No cover image for this event" />
+          )}
+        </div>
 
         <header className="space-y-3 p-6">
           <div className="flex flex-wrap items-start justify-between gap-3">
@@ -205,7 +264,6 @@ export default function EventDetails() {
             </div>
             <EventStatus
               status={resolved.status}
-              pendingReport={resolved.pendingReport}
               cancelledReason={resolved.reason ?? current.cancelledReason ?? null}
             />
           </div>
@@ -217,7 +275,7 @@ export default function EventDetails() {
           )}
         </header>
 
-        {(resolved.status === 'cancelled' || resolved.pendingReport) && (
+        {(resolved.status === 'cancelled' || resolved.status === 'awaiting_report') && (
           <div className="px-6 pb-6">
             {resolved.status === 'cancelled' && (
               <p className="rounded-lg bg-red-50 p-3 text-sm text-red-700">
@@ -225,10 +283,10 @@ export default function EventDetails() {
               </p>
             )}
 
-            {resolved.pendingReport && (
+            {resolved.status === 'awaiting_report' && (
               <p className="rounded-lg bg-amber-50 p-3 text-sm text-amber-800">
                 This event has finished and no report has been submitted. Upload a report
-                within 7 days, otherwise it will be cancelled automatically.
+                within {REPORT_GRACE_DAYS} days, otherwise it will be cancelled automatically.
               </p>
             )}
           </div>
@@ -260,50 +318,120 @@ export default function EventDetails() {
 
         {/* Informational only. Every action lives in the single action bar at the
             bottom, so nothing here competes with or duplicates it. */}
-        {isOwner && hasEnded && (
+        {canManage && hasEnded && (
           <div className="mx-6 mb-6 rounded-xl border border-indigo-200 bg-indigo-50/60 p-4">
             <h2 className="text-sm font-semibold text-gray-900">This event has finished</h2>
             <p className="mt-1 text-sm text-gray-600">
               {isManuallyCancelled
-                ? 'You cancelled this event. Undo the cancellation if it did go ahead, then upload the report.'
+                ? 'Your department cancelled this event. Undo the cancellation if it did go ahead, then upload the report.'
                 : 'Draft the write-up in the report maker, then upload it here to close this event off.'}
             </p>
-          </div>
-        )}
-
-        {signedGallery.length > 0 && (
-          <div className="border-t border-gray-100 p-6">
-            <h2 className="mb-3 text-sm font-semibold text-gray-700">Gallery</h2>
-            <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
-              {signedGallery.map(([path, src], i) => (
-                <a key={path} href={src} target="_blank" rel="noreferrer">
-                  <img
-                    src={src}
-                    alt={`${current.title} ${i + 1}`}
-                    className="aspect-square w-full rounded-lg object-cover transition hover:opacity-90"
-                  />
-                </a>
-              ))}
-            </div>
-          </div>
-        )}
-
-        {current.report && reportUrl && (
-          <div className="border-t border-gray-100 p-6">
-            <h2 className="mb-3 text-sm font-semibold text-gray-700">Report</h2>
+            {/* The sentence above tells the teacher to go somewhere, so the
+                somewhere has to be one click away here. It used to be named in
+                prose only, and the actual link sat in the action bar at the
+                bottom of the page — which is exactly where a teacher who has
+                just been told to do something is not looking. */}
             <a
-              href={reportUrl}
+              href={REPORT_MAKER_URL}
               target="_blank"
               rel="noreferrer"
-              className="inline-flex items-center gap-2 rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm font-medium text-gray-700 transition hover:border-indigo-300 hover:bg-indigo-50 hover:text-indigo-700"
+              className="mt-3 inline-flex items-center gap-1.5 rounded-lg border border-indigo-200 bg-white px-3 py-1.5 text-sm font-semibold text-indigo-600 transition hover:bg-indigo-50"
             >
-              <FileText className="h-4 w-4" />
-              {current.reportName ?? 'Download report'}
+              <ExternalLink className="h-4 w-4" /> Open report maker
             </a>
           </div>
         )}
 
-        {isOwner ? (
+        {current.images.length > 0 && (
+          <div className="border-t border-gray-100 p-6">
+            <h2 className="mb-3 text-sm font-semibold text-gray-700">Gallery</h2>
+            <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+              {current.images.map((path, i) => {
+                // Signed only once this tile has been asked to show it.
+                const shown = media.urls[path]
+                return (
+                // The tile is not itself the button. A whole-tile target with
+                // nothing to say it is a target reads as a thumbnail that failed
+                // to load, and the label has to survive being read aloud.
+                <div
+                  key={path}
+                  className="relative flex aspect-square flex-col items-center justify-center gap-1.5 overflow-hidden rounded-lg border border-gray-200 p-2"
+                >
+                  {/* The photo is drawn inside its own tile rather than opened
+                      over the page. A grid of photos is meant to be scanned, and
+                      covering it with one enlarged image at a time means going
+                      back through it one press at a time to see the rest. */}
+                  {shown ? (
+                    <>
+                      <img
+                        src={shown}
+                        alt={`Photo ${i + 1} of this event`}
+                        className="absolute inset-0 h-full w-full object-cover"
+                      />
+                      {/* The full-size link rides on the photo rather than
+                          under it, so the tile keeps its size and nothing below
+                          it moves when a photo appears. There is no way back to
+                          the placeholder: a photo that has been asked for stays
+                          shown, and the only thing left to do with it is open it
+                          properly. */}
+                      <a
+                        href={shown}
+                        target="_blank"
+                        rel="noreferrer"
+                        aria-label={`Open photo ${i + 1} at full size`}
+                        className="absolute right-1.5 top-1.5 rounded-md bg-white/90 p-1 text-gray-700 transition hover:bg-white"
+                      >
+                        <ExternalLink className="h-3.5 w-3.5" />
+                      </a>
+                    </>
+                  ) : (
+                    <>
+                      <NoImage className="absolute inset-0 h-full w-full" label="" />
+                      <span className="relative text-[11px] leading-tight text-gray-600">
+                        Photo {i + 1}
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => void media.sign(path)}
+                        disabled={!!media.pending[path]}
+                        className="relative inline-flex items-center gap-1 rounded-md border border-indigo-200 bg-white px-2.5 py-1 text-xs font-semibold text-indigo-600 transition hover:bg-indigo-50 disabled:opacity-50"
+                      >
+                        <Eye className="h-3.5 w-3.5" />
+                        {media.pending[path] ? 'Loading…' : 'See'}
+                      </button>
+                    </>
+                  )}
+                </div>
+                )
+              })}
+            </div>
+            {media.error && <p className="mt-2 text-sm text-red-600">{media.error}</p>}
+          </div>
+        )}
+
+        {current.report && (
+          <div className="border-t border-gray-100 p-6">
+            <h2 className="mb-3 text-sm font-semibold text-gray-700">Report</h2>
+            <button
+              type="button"
+              onClick={() => {
+                void media.sign(current.report as string).then((url) => {
+                  if (url) window.open(url, '_blank', 'noopener,noreferrer')
+                })
+              }}
+              disabled={!!media.pending[current.report]}
+              className="inline-flex items-center gap-2 rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm font-medium text-gray-700 transition hover:border-indigo-300 hover:bg-indigo-50 hover:text-indigo-700 disabled:opacity-50"
+            >
+              <FileText className="h-4 w-4" />
+              {media.pending[current.report]
+                ? 'Opening…'
+                : (current.reportName ?? 'Open report')}
+            </button>
+            {media.error && <p className="mt-2 text-sm text-red-600">{media.error}</p>}
+          </div>
+        )}
+
+        {canManage ? (
           <div className="space-y-4 border-t border-gray-100 p-6">
             <div className="flex flex-wrap gap-2">
               <Link
@@ -374,14 +502,15 @@ export default function EventDetails() {
               </button>
 
               <span className="ml-auto inline-flex items-center gap-1.5 text-xs text-gray-400">
-                <UserCheck className="h-3.5 w-3.5" /> You created this
+                <UserCheck className="h-3.5 w-3.5" /> Created by{' '}
+                {event.coordinatorName ?? 'a teacher'}
               </span>
             </div>
           </div>
         ) : (
           <p className="flex items-center gap-1.5 border-t border-gray-100 p-6 text-xs text-gray-400">
-            <UserCheck className="h-3.5 w-3.5" /> You can view this event, but only its creator
-            can edit it.
+            <UserCheck className="h-3.5 w-3.5" /> You can view this event, but editing it is
+            limited to teachers in {department?.name ?? 'its department'}.
           </p>
         )}
       </article>
@@ -402,6 +531,7 @@ export default function EventDetails() {
         onChange={(e) => handleUploadReport(e.target.files?.[0] ?? null)}
         className="hidden"
       />
+
     </div>
   )
 }
