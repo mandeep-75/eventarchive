@@ -6,7 +6,6 @@ import { useDepartments } from '../hooks/useDepartments'
 import EventStatus from './EventStatus'
 
 const WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
-
 function toDateKey(date: Date) {
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`
 }
@@ -46,12 +45,14 @@ export default function EventCalendar({ items }: { items: ListedEvent[] }) {
 
   return (
     <div className="space-y-4">
-      <div className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm">
+      {/* p-2 below sm: every point of card gutter is a point of the 7 columns,
+          and at p-4 a 360px phone had 42px per day. */}
+      <div className="rounded-xl border border-gray-200 bg-white p-2 shadow-sm sm:p-4">
         <div className="mb-4 flex items-center justify-between">
           <button
             onClick={() => shiftMonth(-1)}
             aria-label="Previous month"
-            className="rounded-lg p-1.5 text-gray-500 transition hover:bg-gray-100 hover:text-gray-700"
+            className="-ml-1.5 rounded-lg p-2.5 text-gray-500 transition hover:bg-gray-100 hover:text-gray-700 sm:pointer-fine:p-1.5 sm:pointer-fine:ml-0"
           >
             <ChevronLeft className="h-5 w-5" />
           </button>
@@ -59,21 +60,27 @@ export default function EventCalendar({ items }: { items: ListedEvent[] }) {
           <button
             onClick={() => shiftMonth(1)}
             aria-label="Next month"
-            className="rounded-lg p-1.5 text-gray-500 transition hover:bg-gray-100 hover:text-gray-700"
+            className="-mr-1.5 rounded-lg p-2.5 text-gray-500 transition hover:bg-gray-100 hover:text-gray-700 sm:pointer-fine:p-1.5 sm:pointer-fine:mr-0"
           >
             <ChevronRight className="h-5 w-5" />
           </button>
         </div>
 
         <div className="grid grid-cols-7 gap-px text-center text-xs">
+          {/* One letter below sm. Seven three-letter names need ~30px each and a
+              360px phone has ~46px per column once the card gutter is taken,
+              so they wrapped inside their own cells. */}
           {WEEKDAYS.map((d) => (
             <div key={d} className="py-2 font-semibold text-gray-400">
-              {d}
+              <span className="sm:hidden" aria-hidden="true">
+                {d[0]}
+              </span>
+              <span className="hidden sm:inline">{d}</span>
             </div>
           ))}
 
           {Array.from({ length: new Date(year, month, 1).getDay() }).map((_, i) => (
-            <div key={`empty-${i}`} className="py-4" />
+            <div key={`empty-${i}`} className="py-2 sm:py-4" />
           ))}
 
           {Array.from({ length: new Date(year, month + 1, 0).getDate() }).map((_, i) => {
@@ -87,7 +94,9 @@ export default function EventCalendar({ items }: { items: ListedEvent[] }) {
               <button
                 key={dateStr}
                 onClick={() => setSelectedDate(dateStr)}
-                className={`relative flex min-h-[3.5rem] flex-col items-center gap-0.5 rounded-lg py-2 transition ${
+                aria-label={`${dateStr}${dayEvents.length ? `, ${dayEvents.length} event(s)` : ''}`}
+                aria-pressed={isSelected}
+                className={`relative flex min-h-[3rem] flex-col items-center justify-center gap-0.5 rounded-lg py-1.5 transition sm:min-h-[3.5rem] sm:py-2 ${
                   isSelected
                     ? 'bg-indigo-50 ring-2 ring-indigo-600'
                     : isToday

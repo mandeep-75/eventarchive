@@ -120,7 +120,7 @@ export default function CreateEvent() {
 
       <form
         onSubmit={handleSubmit}
-        className="space-y-5 rounded-xl border border-gray-200 bg-white p-6 shadow-sm"
+        className="space-y-5 rounded-xl border border-gray-200 bg-white p-4 shadow-sm sm:p-6"
       >
         <div>
           <label htmlFor="ev-title" className="mb-1 block text-sm font-medium text-gray-700">
@@ -133,7 +133,7 @@ export default function CreateEvent() {
             value={title}
             onChange={(e) => setTitle(e.target.value)}
             placeholder="e.g. Cybersecurity Workshop"
-            className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100"
+            className="w-full rounded-lg border border-gray-300 px-3 py-2.5 text-base outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100 sm:pointer-fine:py-2 sm:pointer-fine:text-sm"
           />
         </div>
 
@@ -169,7 +169,7 @@ export default function CreateEvent() {
               required
               value={date}
               onChange={(e) => setDate(e.target.value)}
-              className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100"
+              className="w-full rounded-lg border border-gray-300 px-3 py-2.5 text-base outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100 sm:pointer-fine:py-2 sm:pointer-fine:text-sm"
             />
           </div>
           <div>
@@ -182,7 +182,7 @@ export default function CreateEvent() {
               required
               value={startTime}
               onChange={(e) => setStartTime(e.target.value)}
-              className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100"
+              className="w-full rounded-lg border border-gray-300 px-3 py-2.5 text-base outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100 sm:pointer-fine:py-2 sm:pointer-fine:text-sm"
             />
           </div>
           <div>
@@ -195,7 +195,7 @@ export default function CreateEvent() {
               required
               value={endTime}
               onChange={(e) => setEndTime(e.target.value)}
-              className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100"
+              className="w-full rounded-lg border border-gray-300 px-3 py-2.5 text-base outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100 sm:pointer-fine:py-2 sm:pointer-fine:text-sm"
             />
           </div>
         </div>
@@ -211,7 +211,7 @@ export default function CreateEvent() {
             value={venue}
             onChange={(e) => setVenue(e.target.value)}
             placeholder="e.g. Seminar Hall"
-            className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100"
+            className="w-full rounded-lg border border-gray-300 px-3 py-2.5 text-base outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100 sm:pointer-fine:py-2 sm:pointer-fine:text-sm"
           />
         </div>
 
@@ -225,7 +225,7 @@ export default function CreateEvent() {
             maxLength={LIMITS.guestSpeaker}
             value={guestSpeaker}
             onChange={(e) => setGuestSpeaker(e.target.value)}
-            className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100"
+            className="w-full rounded-lg border border-gray-300 px-3 py-2.5 text-base outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100 sm:pointer-fine:py-2 sm:pointer-fine:text-sm"
           />
         </div>
 
@@ -240,19 +240,21 @@ export default function CreateEvent() {
             value={description}
             onChange={(e) => setDescription(e.target.value)}
             placeholder="Brief description of the event…"
-            className="w-full resize-none rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100"
+            className="w-full resize-none rounded-lg border border-gray-300 px-3 py-2.5 text-base outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100 sm:pointer-fine:py-2 sm:pointer-fine:text-sm"
           />
         </div>
 
         <div>
           <span className="mb-1 block text-sm font-medium text-gray-700">Cover Image</span>
-          <label className="flex cursor-pointer items-center gap-3 rounded-lg border border-dashed border-gray-300 p-4 transition hover:border-indigo-400 hover:bg-indigo-50/50">
+          <label className="flex cursor-pointer items-center gap-3 rounded-lg border border-dashed border-gray-300 p-3 transition hover:border-indigo-400 hover:bg-indigo-50/50 sm:p-4">
             {coverPreview ? (
-              <img src={coverPreview} alt="" className="h-20 w-20 rounded object-cover" />
+              <img src={coverPreview} alt="" className="h-20 w-20 shrink-0 rounded object-cover" />
             ) : (
-              <Upload className="h-5 w-5 text-gray-400" />
+              <Upload className="h-5 w-5 shrink-0 text-gray-400" />
             )}
-            <span className="text-sm text-gray-500">
+            {/* Filenames run long and have no spaces, so the label needs min-w-0
+                to be allowed to ellipsize rather than widen the whole form. */}
+            <span className="min-w-0 truncate text-sm text-gray-500">
               {coverFile ? coverFile.name : 'Click to upload cover image'}
             </span>
             <input type="file" accept="image/*" onChange={handleCoverChange} className="hidden" />
@@ -263,18 +265,18 @@ export default function CreateEvent() {
           <p className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-600">{error}</p>
         )}
 
-        <div className="flex items-center justify-end gap-3 border-t border-gray-100 pt-4">
+        <div className="flex flex-col-reverse gap-3 border-t border-gray-100 pt-4 sm:flex-row sm:items-center sm:justify-end">
           <button
             type="button"
             onClick={() => navigate(-1)}
-            className="rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 transition hover:bg-gray-50"
+            className="rounded-lg border border-gray-300 px-4 py-2.5 text-sm font-medium text-gray-700 transition hover:bg-gray-50 sm:pointer-fine:py-2"
           >
             Cancel
           </button>
           <button
             type="submit"
             disabled={submitting}
-            className="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-indigo-700 disabled:opacity-50"
+            className="rounded-lg bg-indigo-600 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-indigo-700 disabled:opacity-50 sm:pointer-fine:py-2"
           >
             {submitting ? 'Creating…' : 'Create Event'}
           </button>

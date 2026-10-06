@@ -91,7 +91,9 @@ const { targetId } = await send('Target.createTarget', { url: 'about:blank' })
 const { sessionId } = await send('Target.attachToTarget', { targetId, flatten: true })
 await send('Page.enable', {}, sessionId)
 await send('Runtime.enable', {}, sessionId)
-// The sidebar is lg-only, so use a desktop viewport to exercise real chrome.
+// A desktop viewport, so the sidebar is the nav under test. Below lg the app
+// renders BottomNav instead — the two read the same NAV_ITEMS, and
+// verify:lifecycle asserts they are still the same list.
 await send(
   'Emulation.setDeviceMetricsOverride',
   { width: 1280, height: 900, deviceScaleFactor: 1, mobile: false },

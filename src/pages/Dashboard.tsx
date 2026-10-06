@@ -19,7 +19,7 @@ import EventStatus from '../components/EventStatus'
 export default function Dashboard() {
   const { profile } = useAuth()
   const { items, loading } = useEvents()
-  const { departments, getDepartment } = useDepartments()
+  const { getDepartment } = useDepartments()
 
   const myDepartment = profile?.departmentId ? getDepartment(profile.departmentId) : undefined
 
@@ -35,15 +35,21 @@ export default function Dashboard() {
   )
 
   const ongoing = items.filter((i) => i.status === 'ongoing')
-  // Newest first, across every department rather than filtered to the viewer.
-  // This replaced a "My Events" panel, which was a second list of the same
+  // Newest filed first, across every department rather than filtered to the
+  // viewer. This replaced a "My Events" panel, which was a second list of the same
   // department's events scoped to one person: on a department of any size it was
   // either a duplicate of the list below it or an empty box, and the person it
   // was about was the only thing on the page that was not about the archive.
+  //
+  // Sorted by `created_at`, not by the event's own date, because that is what the
+  // heading claims. Sorting this by date showed the latest-*scheduled* events
+  // instead — with a full calendar's worth of future events filed early, the
+  // panel stopped moving at all. The Events page splits the same two orderings
+  // apart, and this is the "what is new" half.
   const recent = useMemo(
     () =>
       [...items]
-        .sort((a, b) => b.event.date.localeCompare(a.event.date))
+        .sort((a, b) => b.event.createdAt.getTime() - a.event.createdAt.getTime())
         .slice(0, 6),
     [items],
   )
@@ -56,15 +62,6 @@ export default function Dashboard() {
         return acc
       }, {})
   }, [items])
-
-  const byDepartment = useMemo(
-    () =>
-      departments
-        .map((d) => ({ name: d.name, count: items.filter((i) => i.event.departmentId === d.id).length }))
-        .sort((a, b) => b.count - a.count),
-    [items, departments],
-  )
-  const maxDepartmentCount = Math.max(...byDepartment.map((d) => d.count), 1)
 
   if (loading) return <DashboardSkeleton />
 
@@ -87,7 +84,7 @@ export default function Dashboard() {
         </div>
         <Link
           to="/events/create"
-          className="inline-flex items-center justify-center gap-1.5 self-start rounded-lg bg-indigo-600 px-3 py-2 text-sm font-semibold text-white transition hover:bg-indigo-700"
+          className="inline-flex items-center justify-center gap-1.5 self-start rounded-lg bg-indigo-600 px-3 py-2.5 text-sm font-semibold text-white transition hover:bg-indigo-700 sm:pointer-fine:py-2"
         >
           <PlusCircle className="h-4 w-4" /> Create Event
         </Link>
@@ -198,9 +195,11 @@ export default function Dashboard() {
                   <ul className="space-y-2">
                     {dayItems.map((item) => (
                       <li key={item.event.id}>
+                        {/* py-2.5 for a 40px row: this is the only way to reach
+                            an event from the Upcoming list on a phone. */}
                         <Link
                           to={`/events/${item.event.id}`}
-                          className="flex items-center gap-2 rounded-lg px-2 py-1.5 text-sm transition hover:bg-gray-50"
+                          className="flex items-center gap-2 rounded-lg px-2 py-2.5 text-sm transition hover:bg-gray-50 sm:pointer-fine:py-1.5"
                         >
                           <span className="h-2 w-2 shrink-0 rounded-full bg-blue-500" />
                           <span className="truncate font-medium text-gray-800">
@@ -215,32 +214,6 @@ export default function Dashboard() {
                   </ul>
                 </div>
               ))
-            )}
-          </section>
-
-          <section className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm">
-            <h2 className="mb-3 font-semibold text-gray-900">Events by Department</h2>
-            {byDepartment.length === 0 ? (
-              <p className="text-sm text-gray-400">No departments yet.</p>
-            ) : (
-              <div className="space-y-2.5">
-                {byDepartment.map((d) => (
-                  <div key={d.name} className="flex items-center gap-3">
-                    <span className="w-28 shrink-0 truncate text-xs text-gray-600" title={d.name}>
-                      {d.name}
-                    </span>
-                    <div className="h-3 flex-1 overflow-hidden rounded-full bg-gray-100">
-                      <div
-                        className="h-full rounded-full bg-indigo-500 transition-all"
-                        style={{ width: `${(d.count / maxDepartmentCount) * 100}%` }}
-                      />
-                    </div>
-                    <span className="w-6 text-right text-sm font-semibold text-gray-700">
-                      {d.count}
-                    </span>
-                  </div>
-                ))}
-              </div>
             )}
           </section>
         </div>
@@ -288,13 +261,16 @@ function StatCard({
   bg: string
 }) {
   return (
-    <div className={`flex items-center gap-3 rounded-xl ${bg} p-4`}>
-      <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-white shadow-sm">
+    // Tighter below sm. In two columns on a 360px phone each card is ~156px
+    // wide, and at p-4 with a 40px icon the label was left ~70px — enough to
+    // read "Awaiting…" and nothing else.
+    <div className={`flex items-center gap-2 rounded-xl ${bg} p-3 sm:gap-3 sm:p-4`}>
+      <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-white shadow-sm sm:h-10 sm:w-10">
         {icon}
       </span>
       <div className="min-w-0">
         <p className="text-2xl font-bold text-gray-900">{value}</p>
-        <p className="truncate text-sm text-gray-500">{label}</p>
+        <p className="truncate text-xs text-gray-500 sm:text-sm">{label}</p>
       </div>
     </div>
   )
@@ -311,9 +287,11 @@ function SectionHeader({ title, count, to }: { title: string; count: number; to:
           </span>
         )}
       </h2>
+      {/* -my-1.5 gives the link a 40px target on touch without adding 40px of
+          air between the heading and the content below it. */}
       <Link
         to={to}
-        className="inline-flex items-center gap-1 text-xs font-medium text-indigo-600 hover:text-indigo-700"
+        className="-my-1.5 inline-flex items-center gap-1 py-3 text-xs font-medium text-indigo-600 hover:text-indigo-700 sm:pointer-fine:my-0 sm:pointer-fine:py-0"
       >
         View all <ArrowRight className="h-3 w-3" />
       </Link>
@@ -333,7 +311,9 @@ function DashboardSkeleton() {
   return (
     <div className="space-y-6">
       <div className="h-8 w-64 animate-pulse rounded bg-gray-200" />
-      <div className="grid grid-cols-4 gap-4">
+      {/* Two columns below lg, matching the real stat grid. Four across 328px
+          gave each one 70px, which is a placeholder the shape of nothing. */}
+      <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
         {[0, 1, 2, 3].map((i) => (
           <div key={i} className="h-20 animate-pulse rounded-xl bg-gray-200" />
         ))}

@@ -98,7 +98,10 @@ export default function Setup() {
 
       <section className="space-y-3">
         <h2 className="font-semibold text-gray-900">Departments</h2>
-        <form onSubmit={handleAddDepartment} className="flex items-center gap-2">
+        {/* Stacks below sm. A fixed w-64 input next to the button is ~344px
+            wide, which is more than a 360px phone has left after the page
+            gutter, so the row used to overflow the screen. */}
+        <form onSubmit={handleAddDepartment} className="flex flex-col gap-2 sm:flex-row sm:items-center">
           <input
             value={newDept}
             onChange={(e) => {
@@ -106,11 +109,11 @@ export default function Setup() {
               setError('')
             }}
             placeholder="New department name"
-            className="w-64 rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100"
+            className="w-full rounded-lg border border-gray-300 px-3 py-2.5 text-base outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100 sm:w-64 sm:pointer-fine:py-2 sm:pointer-fine:text-sm"
           />
           <button
             type="submit"
-            className="inline-flex items-center gap-1.5 rounded-lg bg-indigo-600 px-3 py-2 text-sm font-semibold text-white transition hover:bg-indigo-700"
+            className="inline-flex items-center justify-center gap-1.5 rounded-lg bg-indigo-600 px-3 py-2.5 text-sm font-semibold text-white transition hover:bg-indigo-700 sm:pointer-fine:py-2"
           >
             <Plus className="h-4 w-4" /> Add
           </button>
@@ -124,17 +127,18 @@ export default function Setup() {
         ) : (
           <ul className="divide-y divide-gray-100 rounded-xl border border-gray-200 bg-white">
             {departments.map((d) => (
-              <li key={d.id} className="flex items-center justify-between px-4 py-3">
-                <div>
-                  <p className="font-medium text-gray-900">{d.name}</p>
+              <li key={d.id} className="flex items-center justify-between gap-3 px-4 py-3">
+                <div className="min-w-0">
+                  <p className="font-medium break-words text-gray-900">{d.name}</p>
                   <p className="text-xs text-gray-500">
                     {usersByDepartment.get(d.id)?.length ?? 0} teacher(s)
                   </p>
                 </div>
                 <button
                   onClick={() => handleDeleteDepartment(d.id, d.name)}
-                  className="rounded p-1.5 text-gray-400 transition hover:bg-red-50 hover:text-red-600"
+                  className="-mr-1.5 shrink-0 rounded p-3 text-gray-400 transition hover:bg-red-50 hover:text-red-600 sm:pointer-fine:p-1.5"
                   title={`Delete ${d.name}`}
+                  aria-label={`Delete ${d.name}`}
                 >
                   <Trash2 className="h-4 w-4" />
                 </button>
@@ -158,17 +162,17 @@ export default function Setup() {
                   <Users className="h-4 w-4" />
                 </span>
                 <div className="min-w-0 flex-1">
-                  <p className="flex items-center gap-1.5 font-medium text-gray-900">
+                  <p className="flex min-w-0 items-center gap-1.5 font-medium text-gray-900">
                     <span className="truncate">{u.name}</span>
                     {u.id === profile?.id && (
-                      <span className="rounded bg-gray-100 px-1.5 py-0.5 text-[10px] font-medium text-gray-500">
+                      <span className="shrink-0 rounded bg-gray-100 px-1.5 py-0.5 text-[10px] font-medium text-gray-500">
                         you
                       </span>
                     )}
                     {u.isManager && (
                       <span
                         title="Can manage departments and create teacher accounts"
-                        className="inline-flex items-center gap-0.5 rounded bg-indigo-50 px-1.5 py-0.5 text-[10px] font-medium text-indigo-700"
+                        className="inline-flex shrink-0 items-center gap-0.5 rounded bg-indigo-50 px-1.5 py-0.5 text-[10px] font-medium text-indigo-700"
                       >
                         <BadgeCheck className="h-3 w-3" /> manager
                       </span>
@@ -176,11 +180,14 @@ export default function Setup() {
                   </p>
                   <p className="truncate text-xs text-gray-500">{u.email}</p>
                 </div>
+                {/* Full width below sm: sharing a line with the name left this
+                    select narrower than its longest option on a phone, and a
+                    select that clips its own value is not a filter. */}
                 <select
                   value={u.departmentId ?? ''}
                   onChange={(e) => updateUser(u.id, { departmentId: e.target.value || null })}
                   aria-label={`Department for ${u.name}`}
-                  className="rounded-lg border border-gray-300 px-2 py-1.5 text-xs outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100"
+                  className="w-full rounded-lg border border-gray-300 px-2 py-2.5 text-base outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100 sm:w-auto sm:pointer-fine:py-1.5 sm:pointer-fine:text-xs"
                 >
                   <option value="">No department</option>
                   {departments.map((d) => (
@@ -261,7 +268,7 @@ function CreateTeacher({ departments }: { departments: { id: string; name: strin
               required
               value={name}
               onChange={(e) => setName(e.target.value)}
-              className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100"
+              className="w-full rounded-lg border border-gray-300 px-3 py-2.5 text-base outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100 sm:pointer-fine:py-2 sm:pointer-fine:text-sm"
             />
           </div>
           <div>
@@ -275,7 +282,7 @@ function CreateTeacher({ departments }: { departments: { id: string; name: strin
               autoComplete="off"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
-              className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100"
+              className="w-full rounded-lg border border-gray-300 px-3 py-2.5 text-base outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100 sm:pointer-fine:py-2 sm:pointer-fine:text-sm"
             />
           </div>
           <div>
@@ -290,12 +297,12 @@ function CreateTeacher({ departments }: { departments: { id: string; name: strin
                 autoComplete="new-password"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
-                className="w-full rounded-lg border border-gray-300 py-2 pl-3 pr-10 text-sm outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100"
+                className="w-full rounded-lg border border-gray-300 py-2.5 pl-3 pr-11 text-base outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100 sm:pointer-fine:py-2 sm:pointer-fine:pr-10 sm:pointer-fine:text-sm"
               />
               <button
                 type="button"
                 onClick={() => setShowPassword((v) => !v)}
-                className="absolute right-1 top-1/2 -translate-y-1/2 rounded-md p-2 text-gray-400 transition hover:text-gray-600"
+                className="absolute right-1 top-1/2 -translate-y-1/2 rounded-md p-3 text-gray-400 transition hover:text-gray-600 sm:pointer-fine:p-2"
                 title={showPassword ? 'Hide password' : 'Show password'}
                 aria-label={showPassword ? 'Hide password' : 'Show password'}
               >
@@ -313,7 +320,7 @@ function CreateTeacher({ departments }: { departments: { id: string; name: strin
               required
               value={departmentId}
               onChange={(e) => setDepartmentId(e.target.value)}
-              className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100"
+              className="w-full rounded-lg border border-gray-300 px-3 py-2.5 text-base outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100 sm:pointer-fine:py-2 sm:pointer-fine:text-sm"
             >
               <option value="">Select department</option>
               {departments.map((d) => (
@@ -330,7 +337,7 @@ function CreateTeacher({ departments }: { departments: { id: string; name: strin
         <button
           type="submit"
           disabled={submitting}
-          className="inline-flex items-center gap-1.5 rounded-lg bg-indigo-600 px-3 py-2 text-sm font-semibold text-white transition hover:bg-indigo-700 disabled:opacity-50"
+          className="inline-flex w-full items-center justify-center gap-1.5 rounded-lg bg-indigo-600 px-3 py-2.5 text-sm font-semibold text-white transition hover:bg-indigo-700 disabled:opacity-50 sm:w-auto sm:pointer-fine:py-2"
         >
           <UserPlus className="h-4 w-4" />
           {submitting ? 'Creating…' : 'Create teacher'}

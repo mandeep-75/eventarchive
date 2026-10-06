@@ -318,6 +318,63 @@ check('ts: the name is never sent by the client',
 check('ts: creating an event does not require a name',
   /Omit<CollegeEvent, 'createdAt' \| 'updatedAt' \| 'coordinatorName'>/.test(mapperSrc), true)
 
+// ─── There is still a way to navigate on a phone ───────────────────────────
+// The sidebar was `hidden lg:flex`, which did not mean "the layout changes on a
+// small screen" — it meant a phone that opened the dashboard could not reach
+// Events or Setup at all, because nothing else drew the nav. The two views now
+// share one list, so they cannot drift into being different sections.
+const sidebarSrc = readFileSync(new URL('../src/components/Sidebar.tsx', import.meta.url), 'utf8')
+const bottomNavSrc = readFileSync(new URL('../src/components/BottomNav.tsx', import.meta.url), 'utf8')
+const navItemsSrc = readFileSync(new URL('../src/components/navItems.ts', import.meta.url), 'utf8')
+const layoutSrc = readFileSync(new URL('../src/components/Layout.tsx', import.meta.url), 'utf8')
+// Same reason the SQL checks strip comments: every one of these components
+// explains the sizing rule it is applying, so a regex would otherwise be
+// satisfied by the paragraph explaining why it must not be violated.
+const stripComments = (s) => s.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/[^\n]*/g, '')
+const layoutCode = stripComments(layoutSrc)
+
+check('ui: the nav list is declared once', /export const NAV_ITEMS/.test(navItemsSrc), true)
+check('ui: the sidebar reads that one list',
+  /from '\.\/navItems'/.test(sidebarSrc) && !/NAV_ITEMS\s*[:=]\s*\[/.test(sidebarSrc), true)
+check('ui: the small-screen nav reads it too',
+  /from '\.\/navItems'/.test(bottomNavSrc) && !/NAV_ITEMS\s*[:=]\s*\[/.test(bottomNavSrc), true)
+// Below lg the sidebar is display:none, so BottomNav is the only navigation
+// there. It must therefore actually be mounted rather than merely defined.
+check('ui: the small-screen nav is mounted, not just written',
+  /<BottomNav\s*\/>/.test(layoutCode), true)
+// And it is pinned to the bottom, because a thumb reaches the bottom of a
+// phone. A top bar would collide with the navbar it is meant to complement.
+check('ui: the small-screen nav sits at the bottom',
+  /bottom-0/.test(bottomNavSrc), true)
+// 100vh on a phone includes the chrome that hides on scroll, so the shell ends
+// up taller than the visible area and the last row is unreachable.
+check('ui: the shell is sized to the visible viewport, not 100vh',
+  /h-dvh/.test(layoutCode) && !/\bh-screen\b/.test(layoutCode), true)
+// A fixed bar overlays the scroll container, so <main> has to reserve room or
+// the last row of every page ends up underneath it.
+check('ui: main reserves room for the fixed nav',
+  /pb-20/.test(layoutCode), true)
+
+// Every input is below 16px on a touch device unless it opts into a larger size,
+// and iOS Safari zooms the whole page when one takes focus. That is a property
+// of the pointer, not the viewport: a 768px tablet is still a touchscreen, so
+// `sm:text-sm` — width-based — reintroduced the zoom on exactly the devices
+// between phone and desktop. The shrink back to 14px is `sm:pointer-fine`.
+const formSrcs = ['CreateEvent', 'EditEvent', 'Login', 'Setup', 'Events']
+  .map((f) => readFileSync(new URL(`../src/pages/${f}.tsx`, import.meta.url), 'utf8'))
+  .join('\n')
+check('ui: no field shrinks below 16px by viewport width alone',
+  /sm:text-sm/.test(formSrcs), false)
+check('ui: the shrink to 14px is keyed off a fine pointer',
+  /sm:pointer-fine:text-sm/.test(formSrcs), true)
+// Both event forms share this rule, so neither may reintroduce the old classes.
+check('ui: both event forms use the same touch-safe field sizing',
+  ['CreateEvent', 'EditEvent'].every((f) => {
+    const src = readFileSync(new URL(`../src/pages/${f}.tsx`, import.meta.url), 'utf8')
+    const fields = src.match(/px-3 py-2\.5 text-base[^"]*/g) ?? []
+    return fields.length > 0 && fields.every((c) => c.includes('sm:pointer-fine:text-sm'))
+  }), true)
+
 // Who filed an event is a fact about the archive, not a filter over it.
 const dashboardSrc = readFileSync(new URL('../src/pages/Dashboard.tsx', import.meta.url), 'utf8')
 const eventsSrc = readFileSync(new URL('../src/pages/Events.tsx', import.meta.url), 'utf8')
@@ -329,9 +386,43 @@ check('ui: the per-teacher My Events panel is gone',
 check('ui: the Only mine filter is gone', /value="mine"/.test(eventsSrc), false)
 // isMine existed only to feed those two views, so nothing should be left
 // computing it — otherwise the creator check is back in a place it does not
-// belong.
+// belong. Comments are stripped first: this is about code that computes a value,
+// and a comment is allowed to name the thing that was removed (the two checks
+// above deliberately match on props instead of words for the same reason).
 check('ui: nothing compares an event against the signed-in user',
-  /isMine/.test(dashboardSrc + eventsSrc + hooksSrc), false)
+  /isMine/.test(stripComments(dashboardSrc + eventsSrc + hooksSrc)), false)
+
+// The Events page leads with the viewer's own department — the events they can
+// actually edit — then orders what is left by when it was filed. Two different
+// keys for one flat grid would look like a bug, so each group gets its own
+// heading and an empty group is dropped rather than shown as a bare title.
+check('ui: the events list leads with the viewer own department',
+  /mine: matching\.filter\(\(i\) => i\.event\.departmentId === myDepartmentId\)/.test(eventsSrc), true)
+check('ui: the rest of the list is ordered by when it was filed',
+  /const byRecentlyAdded = [\s\S]*?b\.event\.createdAt\.getTime\(\) - a\.event\.createdAt\.getTime\(\)/.test(eventsSrc), true)
+// "What is new" has to be answered by created_at. Sorting that group by the
+// event's own date answers "when does it happen" instead, which is the question
+// the other group is already answering — and it silently buries anything filed
+// late for a date far off.
+check('ui: recently added is not sorted by the event date',
+  /b\.event\.date\.localeCompare\(a\.event\.date\)\)\s*\n?\s*\.slice\(0, 6\)/.test(dashboardSrc), false)
+check('ui: the dashboard recently-added panel is ordered by created_at',
+  /b\.event\.createdAt\.getTime\(\) - a\.event\.createdAt\.getTime\(\)\)\s*\n\s*\.slice\(0, 6\)/.test(dashboardSrc), true)
+// The profile arrives on its own subscription, separately from the events.
+// Partitioning before it lands puts every event in the "elsewhere" group and then
+// shuffles the page once the department arrives.
+check('ui: the events list waits for the profile before partitioning',
+  /loading: profileLoading/.test(eventsSrc) && /const busy = loading \|\| profileLoading/.test(eventsSrc), true)
+// A profile-less account has no department to claim anything with, so it must not
+// be dropped from its own list — it sees everything as "elsewhere".
+check('ui: an account with no department still sees every event',
+  /if \(!myDepartmentId\)[\s\S]*?others: \[\.\.\.matching\]\.sort\(byRecentlyAdded\)/.test(eventsSrc), true)
+// The counts panel was removed: it was a bar chart of a dozen departments where
+// nine read zero, and the same numbers are one click away in the filter.
+check('ui: the department counts panel is gone',
+  /Events by Department/.test(dashboardSrc), false)
+check('ui: nothing counts events per department for display',
+  /maxDepartmentCount/.test(dashboardSrc + eventsSrc), false)
 // The name is shown where an event is, for every event rather than only the
 // viewer's own.
 for (const [label, src] of [['cards', readFileSync(new URL('../src/components/EventCard.tsx', import.meta.url), 'utf8')],
@@ -413,6 +504,57 @@ check('app: and the report is still handed to a new tab',
 // here so a future gallery cannot quietly reintroduce it.
 check('app: nothing signs a list of paths in one pass',
   /useSignedUrls|Promise\.all\(list\.map/.test(storageSrc), false)
+
+// ─── Image compression ──────────────────────────────────────────────────────
+// Egress is charged per byte served, and the same cover is served to every
+// teacher who opens a list and every colleague who opens the event. A photo off a
+// phone camera is routinely 4-8 MB and the cover is painted into a ~670px box, so
+// the file is paid for on every view and almost none of it is ever seen.
+check('app: images are compressed on the way in',
+  /async function compressImage\(file: File\)/.test(storageSrc), true)
+// Compression goes at the single `upload` choke point rather than in each page,
+// so a new upload surface cannot quietly skip it. Every exported uploader funnels
+// through `upload(`, and each one must say which folder it is writing to.
+check('app: compression happens at the one upload path, not per page',
+  /async function upload\(/.test(storageSrc) &&
+  /const compressed = isReport \? null : await compressImage\(file\)/.test(storageSrc) &&
+  (storageSrc.match(/\.upload\(/g) || []).length === 1, true)
+// createImageBitmap, not an <img> element: it decodes off the main thread and
+// takes the File directly, with no object URL to revoke and no second request
+// for the file queued ahead of the upload.
+check('app: it decodes with createImageBitmap',
+  /createImageBitmap\(file\)/.test(storageSrc), true)
+// Scaling the long edge keeps the whole frame. Cropping to the aspect the UI
+// happens to want throws away pixels a teacher may want when they open the photo
+// full size, and it has to guess that aspect before the file is stored.
+check('app: it scales rather than crops, and never enlarges',
+  /const scale = Math\.min\(1, MAX_EDGE \/ Math\.max\(bitmap\.width, bitmap\.height\)\)/.test(storageSrc), true)
+// The property that stops this making egress worse: a file that is already
+// optimised passes through untouched rather than being re-encoded worse.
+check('app: compression can never return a larger file',
+  /if \(blob\.size >= file\.size\) continue/.test(storageSrc), true)
+// A browser that cannot decode, or a canvas that will not cooperate, uploads the
+// original. Failing to store a photo is worse than storing a large one.
+check('app: compression never throws on an undecodable file',
+  /catch\s*\{\s*return null/.test(stripComments(storageSrc)) &&
+  /if \(typeof createImageBitmap !== 'function'\) return null/.test(storageSrc), true)
+// A report is a document. Re-encoding a PDF as an image would destroy it, so the
+// squeeze is skipped for that folder entirely.
+check('app: a report is never re-encoded as an image',
+  /isReport \? null : await compressImage/.test(storageSrc), true)
+// The name has to agree with the stored bytes: a `.png` path holding WebP is
+// served with the wrong Content-Type by anything that trusts the extension.
+check('app: the stored name follows the bytes it stores',
+  /withExtension\(fileName, compressed\.ext\)/.test(storageSrc), true)
+// A report is never compressed, so the bucket's own limit is still what bounds it,
+// and an image is only bounded by what we are willing to decode into memory.
+check('app: a report is still held to the bucket limit',
+  /const limit = isReport \? MAX_BYTES : MAX_INPUT_BYTES/.test(storageSrc), true)
+// `canvas.toBlob` does not fail when it cannot honour the requested type — it
+// silently hands back PNG, which is *larger* than what we started with. So the
+// returned type has to be checked rather than assumed.
+check('app: the returned type is checked, not assumed',
+  /if \(!blob \|\| blob\.type !== type\) continue/.test(storageSrc), true)
 
 // ─── Form input ────────────────────────────────────────────────────────────
 // The browser's own validation is not enough: `required` is satisfied by a run

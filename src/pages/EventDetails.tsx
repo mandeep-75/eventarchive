@@ -219,9 +219,10 @@ export default function EventDetails() {
 
   return (
     <div className="mx-auto max-w-3xl space-y-4 pb-8">
+      {/* -my-1.5 buys the 40px touch target without pushing the article down. */}
       <Link
         to="/events"
-        className="inline-flex items-center gap-1.5 text-sm text-gray-500 transition hover:text-gray-700"
+        className="-my-1.5 inline-flex items-center gap-1.5 py-3 text-sm text-gray-500 transition hover:text-gray-700 sm:pointer-fine:my-0 sm:pointer-fine:py-0"
       >
         <ArrowLeft className="h-4 w-4" /> Back to events
       </Link>
@@ -240,7 +241,7 @@ export default function EventDetails() {
       )}
 
       <article className="overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm">
-        <div className="h-48 w-full sm:h-64">
+        <div className="h-44 w-full sm:h-64">
           {coverUrl ? (
             <img
               src={coverUrl}
@@ -252,7 +253,7 @@ export default function EventDetails() {
           )}
         </div>
 
-        <header className="space-y-3 p-6">
+        <header className="space-y-3 p-4 sm:p-6">
           <div className="flex flex-wrap items-start justify-between gap-3">
             <div className="min-w-0">
               <p className="text-xs font-semibold uppercase tracking-wide text-indigo-600">
@@ -276,7 +277,7 @@ export default function EventDetails() {
         </header>
 
         {(resolved.status === 'cancelled' || resolved.status === 'awaiting_report') && (
-          <div className="px-6 pb-6">
+          <div className="px-4 pb-4 sm:px-6 sm:pb-6">
             {resolved.status === 'cancelled' && (
               <p className="rounded-lg bg-red-50 p-3 text-sm text-red-700">
                 {CANCEL_REASON_LABELS[resolved.reason ?? current.cancelledReason ?? 'manual']}
@@ -292,7 +293,7 @@ export default function EventDetails() {
           </div>
         )}
 
-        <div className="grid grid-cols-1 gap-3 border-t border-gray-100 p-6 sm:grid-cols-2 lg:grid-cols-3">
+        <div className="grid grid-cols-1 gap-3 border-t border-gray-100 p-4 sm:grid-cols-2 sm:p-6 lg:grid-cols-3">
           <Info icon={<CalendarDays className="h-4 w-4" />} label="Date" value={dateLabel} />
           <Info
             icon={<Clock className="h-4 w-4" />}
@@ -319,7 +320,7 @@ export default function EventDetails() {
         {/* Informational only. Every action lives in the single action bar at the
             bottom, so nothing here competes with or duplicates it. */}
         {canManage && hasEnded && (
-          <div className="mx-6 mb-6 rounded-xl border border-indigo-200 bg-indigo-50/60 p-4">
+          <div className="mx-4 mb-4 rounded-xl border border-indigo-200 bg-indigo-50/60 p-4 sm:mx-6 sm:mb-6">
             <h2 className="text-sm font-semibold text-gray-900">This event has finished</h2>
             <p className="mt-1 text-sm text-gray-600">
               {isManuallyCancelled
@@ -335,7 +336,7 @@ export default function EventDetails() {
               href={REPORT_MAKER_URL}
               target="_blank"
               rel="noreferrer"
-              className="mt-3 inline-flex items-center gap-1.5 rounded-lg border border-indigo-200 bg-white px-3 py-1.5 text-sm font-semibold text-indigo-600 transition hover:bg-indigo-50"
+              className="mt-3 inline-flex items-center gap-1.5 rounded-lg border border-indigo-200 bg-white px-3 py-2.5 text-sm font-semibold text-indigo-600 transition hover:bg-indigo-50 sm:pointer-fine:py-1.5"
             >
               <ExternalLink className="h-4 w-4" /> Open report maker
             </a>
@@ -343,7 +344,7 @@ export default function EventDetails() {
         )}
 
         {current.images.length > 0 && (
-          <div className="border-t border-gray-100 p-6">
+          <div className="border-t border-gray-100 p-4 sm:p-6">
             <h2 className="mb-3 text-sm font-semibold text-gray-700">Gallery</h2>
             <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
               {current.images.map((path, i) => {
@@ -379,7 +380,7 @@ export default function EventDetails() {
                         target="_blank"
                         rel="noreferrer"
                         aria-label={`Open photo ${i + 1} at full size`}
-                        className="absolute right-1.5 top-1.5 rounded-md bg-white/90 p-1 text-gray-700 transition hover:bg-white"
+                        className="absolute right-1.5 top-1.5 rounded-md bg-white/90 p-2 text-gray-700 transition hover:bg-white sm:p-1"
                       >
                         <ExternalLink className="h-3.5 w-3.5" />
                       </a>
@@ -394,7 +395,7 @@ export default function EventDetails() {
                         type="button"
                         onClick={() => void media.sign(path)}
                         disabled={!!media.pending[path]}
-                        className="relative inline-flex items-center gap-1 rounded-md border border-indigo-200 bg-white px-2.5 py-1 text-xs font-semibold text-indigo-600 transition hover:bg-indigo-50 disabled:opacity-50"
+                        className="relative inline-flex items-center gap-1 rounded-md border border-indigo-200 bg-white px-2.5 py-2 text-xs font-semibold text-indigo-600 transition hover:bg-indigo-50 disabled:opacity-50 sm:py-1"
                       >
                         <Eye className="h-3.5 w-3.5" />
                         {media.pending[path] ? 'Loading…' : 'See'}
@@ -410,7 +411,7 @@ export default function EventDetails() {
         )}
 
         {current.report && (
-          <div className="border-t border-gray-100 p-6">
+          <div className="border-t border-gray-100 p-4 sm:p-6">
             <h2 className="mb-3 text-sm font-semibold text-gray-700">Report</h2>
             <button
               type="button"
@@ -420,7 +421,7 @@ export default function EventDetails() {
                 })
               }}
               disabled={!!media.pending[current.report]}
-              className="inline-flex items-center gap-2 rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm font-medium text-gray-700 transition hover:border-indigo-300 hover:bg-indigo-50 hover:text-indigo-700 disabled:opacity-50"
+              className="inline-flex items-center gap-2 rounded-lg border border-gray-200 bg-gray-50 px-3 py-2.5 text-sm font-medium text-gray-700 transition hover:border-indigo-300 hover:bg-indigo-50 hover:text-indigo-700 disabled:opacity-50 sm:pointer-fine:py-2"
             >
               <FileText className="h-4 w-4" />
               {media.pending[current.report]
@@ -432,11 +433,13 @@ export default function EventDetails() {
         )}
 
         {canManage ? (
-          <div className="space-y-4 border-t border-gray-100 p-6">
+          <div className="space-y-4 border-t border-gray-100 p-4 sm:p-6">
+            {/* py-2.5 below sm on every action: at py-2 these were 36px tall
+                buttons being hit with a fingertip. */}
             <div className="flex flex-wrap gap-2">
               <Link
                 to={`/events/${current.id}/edit`}
-                className="inline-flex items-center gap-1.5 rounded-lg border border-indigo-200 bg-white px-3 py-2 text-sm font-semibold text-indigo-600 transition hover:bg-indigo-50"
+                className="inline-flex items-center gap-1.5 rounded-lg border border-indigo-200 bg-white px-3 py-2.5 text-sm font-semibold text-indigo-600 transition hover:bg-indigo-50"
               >
                 <Pencil className="h-4 w-4" /> Edit
               </Link>
@@ -444,7 +447,7 @@ export default function EventDetails() {
               <button
                 onClick={() => imageInputRef.current?.click()}
                 disabled={uploading}
-                className="inline-flex items-center gap-1.5 rounded-lg border border-indigo-200 bg-white px-3 py-2 text-sm font-semibold text-indigo-600 transition hover:bg-indigo-50 disabled:opacity-50"
+                className="inline-flex items-center gap-1.5 rounded-lg border border-indigo-200 bg-white px-3 py-2.5 text-sm font-semibold text-indigo-600 transition hover:bg-indigo-50 disabled:opacity-50"
               >
                 <ImagePlus className="h-4 w-4" /> Add photos
               </button>
@@ -452,7 +455,7 @@ export default function EventDetails() {
               <button
                 onClick={() => reportInputRef.current?.click()}
                 disabled={uploading}
-                className={`inline-flex items-center gap-1.5 rounded-lg border px-3 py-2 text-sm font-semibold transition disabled:opacity-50 ${
+                className={`inline-flex items-center gap-1.5 rounded-lg border px-3 py-2.5 text-sm font-semibold transition disabled:opacity-50 ${
                   needsReport
                     ? 'border-indigo-600 bg-indigo-600 text-white hover:bg-indigo-700'
                     : 'border-indigo-200 bg-white text-indigo-600 hover:bg-indigo-50'
@@ -467,7 +470,7 @@ export default function EventDetails() {
                 target="_blank"
                 rel="noreferrer"
                 title="Draft the event write-up in a new tab, then upload it here"
-                className="inline-flex items-center gap-1.5 rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm font-semibold text-gray-700 transition hover:border-indigo-300 hover:bg-indigo-50 hover:text-indigo-700"
+                className="inline-flex items-center gap-1.5 rounded-lg border border-gray-200 bg-white px-3 py-2.5 text-sm font-semibold text-gray-700 transition hover:border-indigo-300 hover:bg-indigo-50 hover:text-indigo-700"
               >
                 <ExternalLink className="h-4 w-4" /> Report maker
               </a>
@@ -477,18 +480,18 @@ export default function EventDetails() {
 
             {/* Destructive and state-changing controls, visually set apart from
                 the everyday actions above so they are not hit by accident. */}
-            <div className="flex flex-wrap items-center gap-x-4 gap-y-2 border-t border-gray-100 pt-4">
+            <div className="flex flex-wrap items-center gap-x-4 gap-y-1 border-t border-gray-100 pt-3 sm:gap-y-2 sm:pt-4">
               {isManuallyCancelled ? (
                 <button
                   onClick={handleRestore}
-                  className="inline-flex items-center gap-1.5 text-sm font-medium text-gray-500 transition hover:text-indigo-600"
+                  className="inline-flex items-center gap-1.5 py-2.5 text-sm font-medium text-gray-500 transition hover:text-indigo-600 sm:py-0"
                 >
                   <RotateCcw className="h-4 w-4" /> Undo cancel
                 </button>
               ) : (
                 <button
                   onClick={handleCancel}
-                  className="inline-flex items-center gap-1.5 text-sm font-medium text-gray-500 transition hover:text-amber-600"
+                  className="inline-flex items-center gap-1.5 py-2.5 text-sm font-medium text-gray-500 transition hover:text-amber-600 sm:py-0"
                 >
                   <Ban className="h-4 w-4" /> Cancel event
                 </button>
@@ -496,7 +499,7 @@ export default function EventDetails() {
 
               <button
                 onClick={handleDelete}
-                className="inline-flex items-center gap-1.5 text-sm font-medium text-gray-500 transition hover:text-red-600"
+                className="inline-flex items-center gap-1.5 py-2.5 text-sm font-medium text-gray-500 transition hover:text-red-600 sm:py-0"
               >
                 <Trash2 className="h-4 w-4" /> Delete event
               </button>
@@ -508,8 +511,8 @@ export default function EventDetails() {
             </div>
           </div>
         ) : (
-          <p className="flex items-center gap-1.5 border-t border-gray-100 p-6 text-xs text-gray-400">
-            <UserCheck className="h-3.5 w-3.5" /> You can view this event, but editing it is
+          <p className="flex items-start gap-1.5 border-t border-gray-100 p-4 text-xs text-gray-400 sm:items-center sm:p-6">
+            <UserCheck className="mt-0.5 h-3.5 w-3.5 shrink-0 sm:mt-0" /> You can view this event, but editing it is
             limited to teachers in {department?.name ?? 'its department'}.
           </p>
         )}

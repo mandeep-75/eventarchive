@@ -1,22 +1,8 @@
 import { NavLink } from 'react-router-dom'
-import { LayoutDashboard, ListTodo, Settings, Users } from 'lucide-react'
+import { Users } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
 import { useDepartments } from '../hooks/useDepartments'
-
-interface NavItem {
-  to: string
-  label: string
-  icon: React.ComponentType<{ className?: string }>
-  managerOnly?: boolean
-}
-
-// Creating an event is an action, not a destination — it lives on the Dashboard
-// and the Events page. The calendar is a view of Events, not a separate section.
-const NAV_ITEMS: NavItem[] = [
-  { to: '/', label: 'Dashboard', icon: LayoutDashboard },
-  { to: '/events', label: 'Events', icon: ListTodo },
-  { to: '/setup', label: 'Setup', icon: Settings, managerOnly: true },
-]
+import { NAV_ITEMS } from './navItems'
 
 export default function Sidebar() {
   const { profile, isManager } = useAuth()
@@ -27,6 +13,8 @@ export default function Sidebar() {
   const department = getDepartment(profile.departmentId)
 
   return (
+    // lg and up only. Below it this is replaced by BottomNav — see the note
+    // there — so the two are the same list rendered twice, not two lists.
     <aside className="hidden w-56 shrink-0 flex-col overflow-hidden border-r border-gray-200 bg-white lg:flex">
       <nav className="flex-1 space-y-1 p-3">
         {items.map((item) => (

@@ -31,3 +31,7 @@ dist-ssr
 # supabase CLI local state — holds the linked project ref and connection
 # strings, which can carry credentials depending on how `supabase link` ran
 supabase/.temp
+
+# scratch output from the playwright MCP server — console dumps and page
+# snapshots from a session, not fixtures
+.playwright-mcp
