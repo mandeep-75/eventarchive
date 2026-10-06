@@ -4,6 +4,7 @@ import type { CancelReason, CollegeEvent, Department, EventStatus as EventStatus
 import EventStatus from './EventStatus'
 import NoImage from './NoImage'
 import { useSignedUrl } from '../supabase/storage'
+import { useAuth } from '../context/AuthContext'
 
 interface EventCardProps {
   event: CollegeEvent
@@ -19,9 +20,14 @@ export default function EventCard({
   status,
   cancelledReason = null,
 }: EventCardProps) {
-  // The bucket is private, so the stored path needs signing before it can go
-  // in src. Renders nothing until the signature arrives.
-  const coverUrl = useSignedUrl(event.coverImage)
+  const { isManager } = useAuth()
+  // The bucket's read policy is managers-only, so a signature for anyone else
+  // is refused before it exists. Not attempting it is the difference between a
+  // placeholder and a card that fires a request it knows will be denied.
+  // isManager is false until the profile lands, so a manager sees the photo a
+  // moment after the card itself — the alternative is signing for everyone and
+  // letting the policy sort them out, which is the request this avoids.
+  const coverUrl = useSignedUrl(isManager ? event.coverImage : null)
   const date = new Date(event.date + 'T00:00:00')
   const dateLabel = date.toLocaleDateString('en-US', {
     month: 'short',

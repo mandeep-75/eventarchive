@@ -34,11 +34,17 @@ const byRecentlyAdded = (a: ListedEvent, b: ListedEvent) =>
 
 export default function Events() {
   const { profile, loading: profileLoading } = useAuth()
-  const { items, loading } = useEvents()
+  const { items, loading, error } = useEvents()
   const { departments } = useDepartments()
   const [searchParams, setSearchParams] = useSearchParams()
 
-  const status = (searchParams.get('status') as EventStatus | null) ?? 'all'
+  // A hand-edited ?status= that matches no tab would filter against a value no
+  // tab can clear: an empty list with every tab showing unpressed. Fall back to
+  // the only tab that always means something.
+  const statusParam = searchParams.get('status')
+  const status = STATUS_TABS.some((tab) => tab.value === statusParam)
+    ? (statusParam as EventStatus | 'all')
+    : 'all'
   const departmentId = searchParams.get('department') ?? 'all'
   const view = searchParams.get('view') === 'calendar' ? 'calendar' : 'list'
   const [search, setSearch] = useState('')
@@ -198,6 +204,17 @@ export default function Events() {
         ))}
       </div>
 
+      {/* The events arrive on their own subscription, so a failed fetch has to
+          be said out loud here: there is no request the reader could retry. */}
+      {error && !busy && (
+        <p
+          role="alert"
+          className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700"
+        >
+          {error}
+        </p>
+      )}
+
       {view === 'calendar' ? (
         busy ? (
           <div className="h-96 animate-pulse rounded-xl bg-gray-200" />
@@ -213,8 +230,10 @@ export default function Events() {
           ))}
         </div>
       ) : groups.length === 0 ? (
+        // An empty list because the fetch failed is already explained above;
+        // blaming the reader's filters for that would send them hunting.
         <div className="rounded-xl border border-dashed border-gray-300 p-12 text-center text-sm text-gray-400">
-          No events match your filters.
+          {error ? 'The events could not be loaded.' : 'No events match your filters.'}
         </div>
       ) : (
         /* A heading per group, so the order says something. A single flat grid

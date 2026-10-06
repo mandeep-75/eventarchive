@@ -10,7 +10,9 @@
 --   * an event's owning teacher (coordinator_id) and its department are fixed
 --     at creation and cannot be changed by a later write;
 --   * a teacher may only file a new event under their own department;
---   * only managers curate departments and teacher profiles.
+--   * only managers curate departments and teacher profiles;
+--   * every signed-in teacher may upload an event's photos and report, but only
+--     managers may read them back — see the storage section.
 --
 -- Run in the Supabase SQL editor, or `supabase db push` for a linked project.
 
@@ -461,12 +463,31 @@ insert into storage.buckets (id, name, public, file_size_limit)
 values ('event-media', 'event-media', false, 10485760)
 on conflict (id) do update set file_size_limit = excluded.file_size_limit;
 
--- Every signed-in teacher may read every event's media, matching the events
--- select policy above.
+-- Photos and reports are read by managers only, and this is the whole boundary:
+-- a signed URL is minted only for a caller the select policy lets see the
+-- object, so a teacher who uploads a cover cannot open it again afterwards.
+-- Writing is deliberately wider than reading. Filing the media is part of
+-- running an event and stays with the department that owns it; looking through
+-- what was filed is the review, and that is a manager's job.
+--
+-- Note this is stricter than events_select above. Any teacher may read the
+-- event's own row — title, date, venue, and the media *paths* — because an
+-- archive nobody outside their department can read is not an archive. The paths
+-- are useless without a signature, and this policy is what refuses one.
+--
+-- One consequence is not obvious and costs a bug to rediscover: Postgres applies
+-- this policy to a DELETE with a WHERE clause and to
+-- `insert … on conflict do update` as well. So for a non-manager the insert
+-- policy below is the only write that can land — replacing or removing an
+-- existing object is refused even though the update and delete policies name the
+-- caller's department. That is why no upload path is ever reused: the app stamps
+-- every file name, so replacing a photo is a fresh insert rather than an
+-- overwrite. Widening this policy to let a teacher overwrite a file would also
+-- let them mint a signed URL for it, which is the one thing it exists to stop.
 drop policy if exists event_media_select on storage.objects;
 create policy event_media_select on storage.objects
   for select to authenticated
-  using (bucket_id = 'event-media');
+  using (bucket_id = 'event-media' and public.is_manager());
 
 -- True when the object sits under an event in the caller's own department.
 --

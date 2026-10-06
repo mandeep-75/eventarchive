@@ -19,13 +19,24 @@ export function useEvents() {
   const { profile } = useAuth()
   const [events, setEvents] = useState<CollegeEvent[]>([])
   const [loading, setLoading] = useState(true)
+  // Surfaced rather than swallowed: a refused or dropped first fetch is the one
+  // thing that leaves `loading` true for good, and the list would sit on a
+  // skeleton with no clue why.
+  const [error, setError] = useState('')
   const now = useNow()
 
   useEffect(() => {
-    const unsub = subscribeEvents((data) => {
-      setEvents(data)
-      setLoading(false)
-    })
+    const unsub = subscribeEvents(
+      (data) => {
+        setEvents(data)
+        setError('')
+        setLoading(false)
+      },
+      (message) => {
+        setError(message)
+        setLoading(false)
+      },
+    )
     return () => unsub()
   }, [])
 
@@ -46,5 +57,5 @@ export function useEvents() {
     [events, profile?.departmentId, now],
   )
 
-  return { items, loading }
+  return { items, loading, error }
 }

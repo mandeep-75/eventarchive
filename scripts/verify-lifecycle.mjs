@@ -1,4 +1,4 @@
-import { readdirSync, readFileSync } from 'node:fs'
+import { readdirSync, readFileSync, existsSync } from 'node:fs'
 import { createServer } from 'vite'
 
 const DAY = 86400000
@@ -376,21 +376,27 @@ check('ui: both event forms use the same touch-safe field sizing',
   }), true)
 
 // Who filed an event is a fact about the archive, not a filter over it.
-const dashboardSrc = readFileSync(new URL('../src/pages/Dashboard.tsx', import.meta.url), 'utf8')
+// The Dashboard held the per-teacher panel; once that was removed it was the
+// same events grouped rather than filtered — a second copy of the list — so it
+// went as well. These three are that decision: the file must not come back,
+// the index route must send everyone to the one list, and the nav must not
+// offer a second front door.
+const appSrc = readFileSync(new URL('../src/App.tsx', import.meta.url), 'utf8')
 const eventsSrc = readFileSync(new URL('../src/pages/Events.tsx', import.meta.url), 'utf8')
 const hooksSrc = readFileSync(new URL('../src/hooks/useEvents.ts', import.meta.url), 'utf8')
-// Matched on the props that render them rather than on the words, because the
-// comments explaining the removal still have to name what was removed.
-check('ui: the per-teacher My Events panel is gone',
-  /title="My Events"/.test(dashboardSrc), false)
+check('ui: the Dashboard page is gone',
+  existsSync(new URL('../src/pages/Dashboard.tsx', import.meta.url)), false)
+check('ui: the index route sends everyone to the events list',
+  /<Route index element=\{<Navigate to="\/events" replace \/>}/.test(appSrc), true)
+check('ui: the nav has no Dashboard entry', /label: 'Dashboard'/.test(navItemsSrc), false)
 check('ui: the Only mine filter is gone', /value="mine"/.test(eventsSrc), false)
 // isMine existed only to feed those two views, so nothing should be left
 // computing it — otherwise the creator check is back in a place it does not
 // belong. Comments are stripped first: this is about code that computes a value,
-// and a comment is allowed to name the thing that was removed (the two checks
-// above deliberately match on props instead of words for the same reason).
+// and a comment is allowed to name the thing that was removed (the check above
+// deliberately matches on props instead of words for the same reason).
 check('ui: nothing compares an event against the signed-in user',
-  /isMine/.test(stripComments(dashboardSrc + eventsSrc + hooksSrc)), false)
+  /isMine/.test(stripComments(eventsSrc + hooksSrc)), false)
 
 // The Events page leads with the viewer's own department — the events they can
 // actually edit — then orders what is left by when it was filed. Two different
@@ -403,11 +409,11 @@ check('ui: the rest of the list is ordered by when it was filed',
 // "What is new" has to be answered by created_at. Sorting that group by the
 // event's own date answers "when does it happen" instead, which is the question
 // the other group is already answering — and it silently buries anything filed
-// late for a date far off.
+// late for a date far off. The panel this was first written for went with the
+// Dashboard; the same comparator now orders the groups on the Events page.
+const recentlyAdded = (eventsSrc.match(/const byRecentlyAdded[\s\S]{0,220}/) ?? [''])[0]
 check('ui: recently added is not sorted by the event date',
-  /b\.event\.date\.localeCompare\(a\.event\.date\)\)\s*\n?\s*\.slice\(0, 6\)/.test(dashboardSrc), false)
-check('ui: the dashboard recently-added panel is ordered by created_at',
-  /b\.event\.createdAt\.getTime\(\) - a\.event\.createdAt\.getTime\(\)\)\s*\n\s*\.slice\(0, 6\)/.test(dashboardSrc), true)
+  /createdAt\.getTime\(\)/.test(recentlyAdded) && !/event\.date\.localeCompare/.test(recentlyAdded), true)
 // The profile arrives on its own subscription, separately from the events.
 // Partitioning before it lands puts every event in the "elsewhere" group and then
 // shuffles the page once the department arrives.
@@ -418,16 +424,16 @@ check('ui: the events list waits for the profile before partitioning',
 check('ui: an account with no department still sees every event',
   /if \(!myDepartmentId\)[\s\S]*?others: \[\.\.\.matching\]\.sort\(byRecentlyAdded\)/.test(eventsSrc), true)
 // The counts panel was removed: it was a bar chart of a dozen departments where
-// nine read zero, and the same numbers are one click away in the filter.
+// nine read zero, and the same numbers are one click away in the filter. Its
+// home went with the Dashboard, so what is left is that no page draws it.
 check('ui: the department counts panel is gone',
-  /Events by Department/.test(dashboardSrc), false)
+  /Events by Department/.test(eventsSrc), false)
 check('ui: nothing counts events per department for display',
-  /maxDepartmentCount/.test(dashboardSrc + eventsSrc), false)
+  /maxDepartmentCount/.test(eventsSrc), false)
 // The name is shown where an event is, for every event rather than only the
 // viewer's own.
 for (const [label, src] of [['cards', readFileSync(new URL('../src/components/EventCard.tsx', import.meta.url), 'utf8')],
-                            ['details', readFileSync(new URL('../src/pages/EventDetails.tsx', import.meta.url), 'utf8')],
-                            ['dashboard', dashboardSrc]]) {
+                            ['details', readFileSync(new URL('../src/pages/EventDetails.tsx', import.meta.url), 'utf8')]]) {
   check(`ui: ${label} name the filer`, /coordinatorName/.test(src), true)
 }
 
@@ -458,16 +464,48 @@ check('sql: the event id is compared as text, never cast to uuid',
 check('sql: the media helper is not exposed to anon',
   /revoke execute on function public\.manages_event_media\(text\) from public, anon;/.test(sql), true)
 
-// The bucket lets any signed-in teacher read every file, so a page that signs a
-// whole event's media on arrival makes every teacher who looks at an event pull
-// every photo and every report off storage. Only the cover is automatic, because
-// the list shows it and a card without a picture is not a card.
+// Only managers read media. The policy in schema.sql is the boundary; the app's
+// half is not firing requests it knows will be refused, so every signing site
+// is gated on isManager and the gallery and report are not drawn at all. A page
+// that signed a whole event's media on arrival would still be safe now, but it
+// would be a request per denied object on every view.
 const detailsSrc = readFileSync(new URL('../src/pages/EventDetails.tsx', import.meta.url), 'utf8')
-check('app: the cover is signed on load', /useSignedUrl\(event\?\.coverImage\)/.test(detailsSrc), true)
+const cardSrc = readFileSync(new URL('../src/components/EventCard.tsx', import.meta.url), 'utf8')
+check('sql: media reads are managers only',
+  /create policy event_media_select on storage\.objects\s+for select to authenticated\s+using \(bucket_id = 'event-media' and public\.is_manager\(\)\)/.test(sql), true)
+check('app: the cover is signed on load',
+  /useSignedUrl\(isManager \? event\?\.coverImage : null\)/.test(detailsSrc), true)
+check('app: a card does not sign a cover for a non-manager',
+  /useSignedUrl\(isManager \? event\.coverImage : null\)/.test(cardSrc), true)
 check('app: the gallery is not signed on load',
   /useSignedUrls?\(event\?\.images/.test(detailsSrc), false)
+check('app: the gallery is not drawn for a non-manager',
+  /isManager && current\.images\.length/.test(detailsSrc), true)
 check('app: the report is not signed on load',
   /useSignedUrl\(event\?\.report\)/.test(detailsSrc), false)
+check('app: the report is not drawn for a non-manager',
+  /isManager && current\.report/.test(detailsSrc), true)
+// The read half must not have swallowed the write half. Uploading is part of
+// running an event and stays with the department, so the controls live in the
+// canManage branch and are not behind isManager.
+const actionBarSrc = detailsSrc.slice(detailsSrc.indexOf('{canManage ? ('))
+check('app: a non-manager teacher can still upload photos and a report',
+  /Add photos/.test(actionBarSrc) && /Upload report/.test(actionBarSrc), true)
+// Postgres needs select visibility for `on conflict do update` as well as for a
+// DELETE, so a write that reuses a path would be refused for a non-manager —
+// the second cover upload of the event would be the one to fail. Every upload is
+// therefore a fresh insert: no upsert anywhere, and the cover's file name is
+// stamped like the gallery's and the report's.
+check('app: no upload reuses a storage path', /upsert:/.test(storageSrc), false)
+check('app: the cover filename is stamped like every other upload',
+  /\$\{Date\.now\(\)\}-cover\.jpg/.test(storageSrc), true)
+// The edit form is a signing site too: it put the stored path straight into
+// `src`, which asks the site for a file it does not have and renders a broken
+// image. It signs like everywhere else now, and only for a manager.
+const editSrc = readFileSync(new URL('../src/pages/EditEvent.tsx', import.meta.url), 'utf8')
+check('app: the edit form signs the cover rather than using the raw path',
+  /useSignedUrl\(isManager \? existingCover : null\)/.test(editSrc) &&
+  !/src=\{coverPreview \?\? existingCover/.test(editSrc), true)
 check('app: there is a signer for when someone actually asks',
   /export function useOnDemandSigner\(\)/.test(storageSrc), true)
 // It hands back a URL and lets the page decide what a "See" does, so a photo can

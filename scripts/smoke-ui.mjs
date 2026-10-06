@@ -195,7 +195,9 @@ try {
   await setInput('password', PASSWORD)
   await evaluate(`document.querySelector('form button[type=submit]').click()`)
 
-  const signedIn = await waitForText('Dashboard', 20000)
+  // There is no Dashboard page: the index route sends a fresh sign-in straight
+  // to the one list, so that is what proves the login landed.
+  const signedIn = await waitForText('All Departments', 20000)
   if (!signedIn) {
     const err = await evaluate(
       `document.querySelector('.bg-red-50, [role=alert]')?.innerText ?? '(no error shown)'`,
@@ -204,6 +206,8 @@ try {
     throw new Error('sign-in failed')
   }
   check('sign in succeeds', true)
+  const landed = await evaluate('location.pathname')
+  check('sign in lands on the events list', landed === '/events', landed)
   body = await text()
 
   // ── 3. One user type: no role dashboards, manager-only Setup ───────────
@@ -213,29 +217,56 @@ try {
   const isManager = body.includes('Setup')
   console.log(`INFO  signed in as ${isManager ? 'a manager' : 'a non-manager'}`)
 
-  // ── 4. Events page: sees all events, has a "only mine" scope ────────────
+  // ── 4. Events page: one list, a department filter, no per-teacher scope ─
   await goto(BASE + '/events')
   body = await text()
   check('events page renders', body.includes('Events'), body.slice(0, 120))
-  check('has Only mine filter', body.includes('Only mine'))
+  check('no "Only mine" filter', !body.includes('Only mine'), 'per-teacher view is gone')
   check('can filter by department', body.includes('All Departments'))
+
+  // Covers are signed URLs into a private bucket whose read policy is
+  // managers-only, so a non-manager must never be handed one: the policy would
+  // refuse it, and firing the request anyway is what the isManager gate exists
+  // to avoid. The other failure is older — a raw storage path in src asks the
+  // site for a file the site does not have, and renders a broken image.
+  const cardImgs = await evaluate(
+    `[...document.querySelectorAll('${CARD_SEL} img')].map((i) => i.currentSrc || i.src)`,
+  )
+  const signedCovers = cardImgs.filter((s) => s.includes('/object/sign/'))
+  const rawPaths = cardImgs.filter((s) => /^events\//.test(s))
+  check('no raw storage path is used as an image src', rawPaths.length === 0, rawPaths[0] ?? '')
+  if (isManager) {
+    console.log(`INFO  ${signedCovers.length} signed cover(s) on the events page`)
+  } else {
+    check(
+      'a non-manager is never sent a signed cover URL',
+      signedCovers.length === 0,
+      `${signedCovers.length} signed`,
+    )
+  }
 
   // ── 5. Create page: no status dropdown, status explained as derived ────
   await goto(BASE + '/events/create')
   body = await text()
+  // Department is pinned to the caller at creation, so there is nothing to pick:
+  // no status dropdown (status is derived) and no department dropdown (a teacher
+  // files under their own). The form says so instead of asking.
   const selectCount = await evaluate('document.querySelectorAll("select").length')
   check(
-    'status dropdown removed (only department remains)',
-    selectCount === 1,
-    `expected 1 select, found ${selectCount}`,
+    'no dropdowns — department is pinned and status is derived',
+    selectCount === 0,
+    `expected 0 selects, found ${selectCount}`,
   )
   check('create form renders', body.includes('Create Event'), body.slice(0, 120))
   check(
     'status explained as derived from date',
     body.includes('worked out automatically') || body.includes('based on the date'),
   )
+  check('department shown as your own', body.includes('your department'), body.slice(0, 160))
   check('guest speaker now settable', body.includes('Guest / Speaker'))
-  check('participants now settable', body.includes('Participants'))
+  // participantCount left the form deliberately; the column stays so rows
+  // created while it existed still read correctly on the details page.
+  check('participants field is not on the form', !body.includes('Participants'), 'still offered')
 
   // ── 6. Event detail + edit gating (needs at least one event) ───────────
   await goto(BASE + '/events')
@@ -250,11 +281,49 @@ try {
     await waitForText('Back to events')
     const detail = await text()
     check('event details renders', detail.includes('About this event') || detail.includes('Back to events'), detail.slice(0, 160))
-    check('lifecycle explanation shown', detail.includes('worked out from the date'), detail.slice(0, 200))
+    // Status is resolved from the clock at render time, so the page explains it
+    // rather than offering a control: there is no select and nothing that says
+    // "Change status". A stored status is the bug this app was built to avoid.
+    const statusSelects = await evaluate('document.querySelectorAll("main select").length')
+    check(
+      'status is explained, not settable',
+      statusSelects === 0 && !detail.includes('Change status'),
+      `selects=${statusSelects}`,
+    )
     const hasEdit = detail.includes('Edit')
-    const saysViewOnly = detail.includes('not edit')
+    // The view-only line is what a teacher from another department sees instead
+    // of the action bar: "You can view this event, but editing it is limited to
+    // teachers in <department>."
+    const saysViewOnly = detail.includes('You can view this event')
     check('edit affordances follow the department rule', hasEdit ? true : saysViewOnly, `edit=${hasEdit} viewOnly=${saysViewOnly}`)
     check('no dead "replace report via Edit" hint', !detail.includes('replace report via Edit'))
+
+    // Media reading is managers-only in schema.sql. The gallery and the report
+    // are not drawn for anyone else — their sections would fail every time the
+    // policy refused them — and no raw storage path may reach an img src.
+    const detailImgs = await evaluate(
+      `[...document.images].map((i) => i.currentSrc || i.src)`,
+    )
+    const detailSigned = detailImgs.filter((s) => s.includes('/object/sign/')).length
+    const detailRaw = detailImgs.filter((s) => /^events\//.test(s))
+    check('no raw storage path is used as an image src', detailRaw.length === 0, detailRaw[0] ?? '')
+    const headings = await evaluate(
+      `[...document.querySelectorAll('h2')].map((h) => h.textContent.trim())`,
+    )
+    if (isManager) {
+      console.log(`INFO  ${detailSigned} signed media URL(s); sections: ${headings.join(' | ')}`)
+    } else {
+      check('a non-manager is never sent a signed media URL', detailSigned === 0, `${detailSigned} signed`)
+      check('gallery is hidden from a non-manager', !headings.includes('Gallery'), headings.join(' | '))
+      check('report section is hidden from a non-manager', !headings.includes('Report'), headings.join(' | '))
+      if (hasEdit) {
+        check(
+          'uploader is told media is managers-only',
+          detail.includes('visible to managers only'),
+          'note missing',
+        )
+      }
+    }
 
     await goto(BASE + probe + '/edit')
     await waitForText('Back to event')

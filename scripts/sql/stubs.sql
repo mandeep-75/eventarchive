@@ -72,6 +72,14 @@ create table if not exists storage.objects (
   updated_at timestamptz default now()
 );
 
+-- Supabase ships `bucketid_objname` as a unique index on (bucket_id, name).
+-- It is what makes an overwrite a different statement from an insert: storage's
+-- upsert path is `on conflict (bucket_id, name) do update`, and without this
+-- constraint that statement cannot even be formed — so the upsert case the
+-- read policy is supposed to refuse would never be exercised.
+create unique index if not exists bucketid_objname
+  on storage.objects (bucket_id, name);
+
 -- RLS on, exactly as Supabase ships it. Without this the policies below would
 -- be inert and every test would pass for the wrong reason.
 alter table storage.objects enable row level security;

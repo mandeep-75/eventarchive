@@ -2,7 +2,7 @@ import { useEffect, useState, type FormEvent } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { Info, Upload } from 'lucide-react'
 import { getEvent, updateEvent } from '../supabase/data'
-import { uploadCoverImage } from '../supabase/storage'
+import { uploadCoverImage, useSignedUrl } from '../supabase/storage'
 import { useAuth } from '../context/AuthContext'
 import { useDepartments } from '../hooks/useDepartments'
 import { canManageEvent } from '../lib/permissions'
@@ -12,7 +12,7 @@ import { STATUS_LABELS } from '../types'
 
 export default function EditEvent() {
   const { id } = useParams<{ id: string }>()
-  const { profile } = useAuth()
+  const { profile, isManager } = useAuth()
   const { getDepartment } = useDepartments()
   const navigate = useNavigate()
 
@@ -34,40 +34,81 @@ export default function EditEvent() {
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState('')
 
+  // Reset while rendering rather than in the fetch effect: the effect runs
+  // after the new URL has already been committed, so the previous event's flags
+  // — up to and including a forbidden panel — would sit under the new id while
+  // the new one loads. The route reuses this component when only the id changes.
+  const [prevId, setPrevId] = useState(id)
+  if (prevId !== id) {
+    setPrevId(id)
+    setLoadingEvent(true)
+    setForbidden(false)
+    setNotFound(false)
+    setError('')
+  }
+
+  // The stored cover is a path into a private bucket, not a URL, so it has to be
+  // signed before it can be shown — putting the path straight into `src` asks the
+  // site for a file it does not have and renders a broken image. Gated on
+  // isManager like every other signing site, because the storage policy refuses
+  // anyone else: a non-manager gets the upload prompt in its place.
+  const signedCover = useSignedUrl(isManager ? existingCover : null)
+
+  // Primitive, not the profile object: every auth event hands down a fresh
+  // profile for the same account, and re-running on identity alone would refill
+  // the form over edits still being typed. The profile arriving at all flips
+  // hasProfile, so the effect still waits for it — see the note inside.
+  const hasProfile = profile != null
+  const ownDepartmentId = profile?.departmentId ?? null
+
   useEffect(() => {
     if (!id) return
     // Wait for the profile: the department check below needs it, and a null
     // profile would otherwise look like "not your department" and lock the page
     // for a teacher who does in fact own the event. The event and the profile
     // arrive on separate subscriptions, so either can be last.
-    if (!profile) return
-    getEvent(id).then((e) => {
-      if (!e) {
+    if (!hasProfile) return
+    let cancelled = false
+    getEvent(id)
+      .then((e) => {
+        if (cancelled) return
+        if (!e) {
+          setNotFound(true)
+          setLoadingEvent(false)
+          return
+        }
+        if (!canManageEvent(e, ownDepartmentId)) {
+          setForbidden(true)
+          setLoadingEvent(false)
+          return
+        }
+        setTitle(e.title)
+        setDepartmentId(e.departmentId)
+        setDate(e.date)
+        setStartTime(e.startTime)
+        setEndTime(e.endTime)
+        setVenue(e.venue)
+        setDescription(e.description)
+        setGuestSpeaker(e.guestSpeaker ?? '')
+        // Kept so the status preview below reflects a report that already exists.
+        // Without it, editing an event whose report was filed predicts it is about
+        // to be cancelled for want of one.
+        setHasReport(Boolean(e.report))
+        setExistingCover(e.coverImage)
+        setLoadingEvent(false)
+      })
+      .catch((err) => {
+        // Without this the rejection is unhandled: the skeleton stays up
+        // forever and the form keeps whatever the last event put in it.
+        if (cancelled) return
+        setError(err instanceof Error ? err.message : 'Could not load this event.')
         setNotFound(true)
         setLoadingEvent(false)
-        return
-      }
-      if (!canManageEvent(e, profile.departmentId)) {
-        setForbidden(true)
-        setLoadingEvent(false)
-        return
-      }
-      setTitle(e.title)
-      setDepartmentId(e.departmentId)
-      setDate(e.date)
-      setStartTime(e.startTime)
-      setEndTime(e.endTime)
-      setVenue(e.venue)
-      setDescription(e.description)
-      setGuestSpeaker(e.guestSpeaker ?? '')
-      // Kept so the status preview below reflects a report that already exists.
-      // Without it, editing an event whose report was filed predicts it is about
-      // to be cancelled for want of one.
-      setHasReport(Boolean(e.report))
-      setExistingCover(e.coverImage)
-      setLoadingEvent(false)
-    })
-  }, [id, profile])
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [id, hasProfile, ownDepartmentId])
 
   function handleCoverChange(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0]
@@ -148,11 +189,11 @@ export default function EditEvent() {
       <div className="mx-auto max-w-lg space-y-4">
         <div className="rounded-xl border border-dashed border-gray-300 p-10 text-center">
           <h1 className="text-lg font-bold text-gray-900">
-            {notFound ? 'Event not found' : 'You cannot edit this event'}
+            {notFound ? (error ? 'Could not load event' : 'Event not found') : 'You cannot edit this event'}
           </h1>
           <p className="mt-2 text-sm text-gray-500">
             {notFound
-              ? 'It may have been deleted.'
+              ? error || 'It may have been deleted.'
               : 'Only teachers in the department that owns an event can change it. You can still view it.'}
           </p>
         </div>
@@ -300,9 +341,9 @@ export default function EditEvent() {
         <div>
           <span className="mb-1 block text-sm font-medium text-gray-700">Cover Image</span>
           <label className="flex cursor-pointer items-center gap-3 rounded-lg border border-dashed border-gray-300 p-3 transition hover:border-indigo-400 hover:bg-indigo-50/50 sm:p-4">
-            {coverPreview || existingCover ? (
+            {coverPreview || signedCover ? (
               <img
-                src={coverPreview ?? existingCover ?? ''}
+                src={coverPreview ?? signedCover ?? ''}
                 alt=""
                 className="h-20 w-20 shrink-0 rounded object-cover"
               />

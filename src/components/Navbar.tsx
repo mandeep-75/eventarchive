@@ -35,7 +35,7 @@ export default function Navbar() {
           {/* Dropped below sm rather than shrunk: the wordmark, the name, the
               department and the avatar do not fit across 360px, and truncating a
               teacher's own name to "Pri…" to keep a subtitle is a bad trade. The
-              department is on the dashboard heading and on every card anyway. */}
+              department is on every card and on the group heading anyway. */}
           <div className="hidden sm:block">
             <p className="text-sm font-medium leading-tight text-gray-900">
               {profile?.name ?? user?.email}

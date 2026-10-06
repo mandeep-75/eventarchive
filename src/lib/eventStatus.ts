@@ -1,4 +1,4 @@
-import { addDays, isValid, parse } from 'date-fns'
+import { isValid, parse } from 'date-fns'
 import type { CancelReason, CollegeEvent, EventStatus } from '../types'
 
 /**
@@ -149,7 +149,13 @@ export function resolveStatus(
     return { ...DEFAULT, status: 'completed' }
   }
 
-  if (nowMs < addDays(end, REPORT_GRACE_DAYS).getTime()) {
+  // The deadline is REPORT_GRACE_DAYS times 24h from the end, not ten calendar
+  // days in the viewer's device zone. `addDays` from date-fns walks the local
+  // calendar, so on a device with daylight saving the boundary would shift by
+  // an hour across a transition and readers would disagree about it — exactly
+  // what pinning times to EVENT_TIME_ZONE exists to prevent. This also matches
+  // how verify-lifecycle models the deadline (end + REPORT_GRACE_DAYS × 24h).
+  if (nowMs < end.getTime() + REPORT_GRACE_DAYS * 86_400_000) {
     return { ...DEFAULT, status: 'awaiting_report' }
   }
 

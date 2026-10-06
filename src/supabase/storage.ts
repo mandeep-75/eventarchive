@@ -16,8 +16,9 @@ const SIGNED_URL_TTL = 60 * 60 * 24 * 7
  * under someone else's folder.
  *
  * The returned value is the storage *path*, not a URL. The bucket is private so
- * that the "any signed-in teacher may read" rule in schema.sql actually applies;
- * render it through useSignedUrl (cover) or useOnDemandSigner (everything else).
+ * that the managers-only read rule in schema.sql actually applies; render it
+ * through useSignedUrl (cover) or useOnDemandSigner (everything else), and only
+ * for a manager — anyone else's signature request is refused by the policy.
  */
 async function pathFor(eventId: string, folder: string, fileName: string) {
   const { data } = await supabase.auth.getSession()
@@ -66,10 +67,11 @@ const QUALITY = 0.8
  * it is correct, costs nothing, and is the difference if the read path ever
  * stops going through a signature.
  *
- * `images` and `report` paths both carry a timestamp, so one path only ever holds
- * one file and could be cached indefinitely. `cover` is the exception: it is one
- * fixed path written with upsert, so a teacher who replaces the photo would keep
- * seeing the old one until this expires.
+ * A year rather than a short window because no path is ever written twice: every
+ * upload — cover included — carries a timestamp, so one path holds one file for
+ * the life of the archive and replacing a photo points the event at a new path
+ * instead of overwriting the old bytes. That is also why there is no `upsert`
+ * below; see the note there.
  *
  * Note what is *not* fixed here, and cannot be from this file: a signature is
  * unique per mint, so a fresh page load asks Storage for a fresh URL for the same
@@ -78,9 +80,7 @@ const QUALITY = 0.8
  * 7-day bearer token per photo in the browser, so it is a deliberate decision
  * rather than a default.
  */
-function cacheControlFor(folder: string): string {
-  return folder === 'cover' ? '300' : '31536000'
-}
+const CACHE_CONTROL = '31536000'
 
 /** Replaces a trailing extension, or appends one when the name has none. */
 function withExtension(name: string, ext: string): string {
@@ -202,17 +202,27 @@ async function upload(
 
   // The stored name has to agree with the stored bytes. A `.png` path holding
   // WebP is served with the wrong Content-Type by anything that trusts the
-  // extension, and `cover.jpg` is already the name the cover lives under.
+  // extension, and the timestamp in front of the name is what makes every path
+  // one-write-only — see the note on the upload options below.
   const storedName = compressed ? withExtension(fileName, compressed.ext) : fileName
 
   const path = await pathFor(eventId, folder, storedName)
+  // No `upsert`, deliberately, and it is not about preferring insert to update.
+  // The bucket's read policy is managers-only, and Postgres needs select
+  // visibility on the existing row for both `ON CONFLICT DO UPDATE` and a
+  // `DELETE` — so a non-manager's second write to the same path is refused
+  // outright. Every path therefore holds exactly one file: replacing a cover
+  // uploads a new object and points the event at it, which is also why the
+  // cover carries a timestamp like everything else.
+  //
+  // The consequence to know about: the object a replaced cover used to point at
+  // is left behind. Nothing in the app reads it any more, and reclaiming the
+  // bytes would need a delete control that is managers-only anyway.
   const { error } = await supabase.storage.from(BUCKET).upload(path, body, {
-    // Cover and gallery images replace any previous file at the same path.
-    upsert: !isReport,
     // Sent explicitly so a File with an empty or odd `type` still lands as an
     // image rather than application/octet-stream.
     contentType: compressed ? compressed.type : file.type || 'image/jpeg',
-    cacheControl: cacheControlFor(folder),
+    cacheControl: CACHE_CONTROL,
   })
   if (error) {
     // Storage reports policy denials, missing buckets and oversize files all
@@ -222,8 +232,9 @@ async function upload(
   return path
 }
 
+/** Stamped like every other upload, so replacing a cover never rewrites a path. */
 export function uploadCoverImage(eventId: string, file: File) {
-  return upload(file, eventId, 'cover', 'cover.jpg')
+  return upload(file, eventId, 'cover', `${Date.now()}-cover.jpg`)
 }
 
 export function uploadEventImage(eventId: string, file: File, stamp: number | string) {
@@ -257,9 +268,9 @@ export async function signUrl(path: string | null | undefined): Promise<string |
  * Signs a path when someone asks for it, rather than when the page loads.
  *
  * A gallery holds a dozen photos and a report is often a multi-page PDF, and the
- * storage policy lets any signed-in teacher read all of it — so signing a whole
- * event's media on arrival means every teacher who opens the page pulls every
- * file, whether or not they ever look at it. Nothing is fetched here either: this
+ * storage policy lets a manager read all of it — so signing a whole event's
+ * media on arrival means every manager who opens the page pulls every file,
+ * whether or not they ever look at it. Nothing is fetched here either: this
  * only mints the URL, and the file itself is requested by whoever opens it.
  *
  * The cover is the deliberate exception, in `useSignedUrl` below. It is the one

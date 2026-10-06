@@ -23,7 +23,7 @@
 --   storage bucket      UNTOUCHED, along with every uploaded cover and report.
 --                        The files are not in the database, so dropping the
 --                        bucket row would orphan them. schema.sql refreshes the
---                        bucket's size limit with `on conflict do nothing` and
+--                        bucket's size limit (`on conflict (id) do update`) and
 --                        rewrites the storage policies.
 --
 -- ─── How to run it ────────────────────────────────────────────────────────

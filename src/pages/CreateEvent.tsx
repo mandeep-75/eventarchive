@@ -130,6 +130,7 @@ export default function CreateEvent() {
             id="ev-title"
             type="text"
             required
+            maxLength={LIMITS.title}
             value={title}
             onChange={(e) => setTitle(e.target.value)}
             placeholder="e.g. Cybersecurity Workshop"
@@ -208,6 +209,7 @@ export default function CreateEvent() {
             id="ev-venue"
             type="text"
             required
+            maxLength={LIMITS.venue}
             value={venue}
             onChange={(e) => setVenue(e.target.value)}
             placeholder="e.g. Seminar Hall"

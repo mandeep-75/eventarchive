@@ -21,11 +21,17 @@ export default function Login() {
 
       // ProtectedRoute remembers where a signed-out visitor was headed and
       // passes it through, so a deep link to an event survives the login detour.
-      // /setup is excluded: a manager who got bounced off it would otherwise be
-      // returned there, and a newly added teacher would land on a screen they
-      // have no business seeing. Everything else falls back to the events list.
-      const from = (location.state as { from?: { pathname: string } })?.from?.pathname
-      const target = from && from !== '/setup' && from !== '/' ? from : '/events'
+      // The search string comes too, so a filtered link (?status=completed and
+      // friends) still shows what it was pointed at rather than the unfiltered
+      // list. /setup is excluded: a manager who got bounced off it would
+      // otherwise be returned there, and a newly added teacher would land on a
+      // screen they have no business seeing. Everything else falls back to the
+      // events list.
+      const from = (location.state as { from?: { pathname: string; search?: string } })?.from
+      const target =
+        from && from.pathname !== '/setup' && from.pathname !== '/'
+          ? from.pathname + (from.search ?? '')
+          : '/events'
       navigate(target, { replace: true })
     } catch (err) {
       setError(

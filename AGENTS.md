@@ -124,8 +124,8 @@ is the one that matters. `pnpm verify:lifecycle` asserts `pendingReport` appears
 nowhere in `src/`. Do not bring it back.
 
 `REPORT_GRACE_DAYS` (10) is the single place the window is set. `EventDetails`
-and `Dashboard` interpolate it rather than spelling the number out, so changing
-it cannot leave stale copy behind.
+interpolates it rather than spelling the number out, so changing it cannot leave
+stale copy behind.
 
 ### 2. Event times are pinned to one zone
 
@@ -159,8 +159,10 @@ still read correctly on the details page.
 | | Who may write |
 | --- | --- |
 | read `events` | any signed-in teacher |
+| read `event-media` storage | **managers only** |
 | create `events` | own department, and `coordinator_id = auth.uid()` |
 | update / delete `events` | **anyone in the owning department** |
+| upload media | own folder, or any event in the owning department |
 | `departments`, `profiles` | managers only |
 
 The app mirrors the write rules in `src/lib/permissions.ts` (`canManageEvent`)
@@ -168,11 +170,14 @@ purely so it can hide buttons. `verify-lifecycle` asserts the SQL and the
 TypeScript agree.
 
 **Who filed an event is a fact about the archive, not a filter over it.** There
-is no "My Events" view and no `isMine`: the dashboard lists the department's
-events, and every card and details page says `Created by <name>`. The reason is
-that the per-teacher view was always a second, worse copy of the department's
-list — either a duplicate or an empty box — and a creator check in a component
-is exactly the kind of thing that later gets mistaken for a permission.
+is no "My Events" view and no `isMine`, and there is no Dashboard page either:
+`/events` is the front page, grouped by department (the viewer's own first), and
+every card and details page says `Created by <name>`. The reason is that a
+per-teacher view — and then a second page showing the same events grouped rather
+than filtered — was always a worse copy of the department's list: either a
+duplicate or an empty box, and a creator check in a component is exactly the
+kind of thing that later gets mistaken for a permission. `verify:lifecycle`
+asserts none of it comes back.
 
 Reading that name is the one thing the client cannot do, because
 `profiles_select` only lets a teacher read their own row. So the name is
@@ -218,6 +223,23 @@ Layout is `events/{eventId}/{uid}/{folder}/{file}`, bucket `event-media`.
   with `useOnDemandSigner`. Only the cover is automatic, because the list shows
   it and a card without a picture is not a card — signing the whole gallery on
   arrival would pull every photo off storage just by opening an event.
+- **Reads are managers-only; writes are not.** `event_media_select` requires
+  `is_manager()`, and a signed URL is minted only for a caller that policy lets
+  see the object — so an ordinary teacher can upload a cover or file a report
+  and cannot open it again. The app mirrors this so it never fires a request the
+  policy will refuse: every signing site is gated on `isManager`
+  (`EventCard`, `EventDetails`), and the gallery and report sections are not
+  drawn for anyone else. The upload buttons stay under `canManage`, because
+  filing media is part of running an event. Do not widen the select policy to
+  make a photo appear for a teacher — that is the rule changing, not a bug.
+- **That select policy also decides who may overwrite or delete**, which is the
+  non-obvious half: Postgres applies it to a `DELETE` with a `WHERE` clause and
+  to `on conflict do update`, so a non-manager's *insert* is the only write that
+  lands — the update and delete policies naming the department are unreachable
+  for them. Hence **no path is ever written twice**: every upload, the cover
+  included, carries a timestamp and there is no `upsert`, so replacing a photo
+  is a fresh insert rather than an overwrite. Put a fixed file name back and a
+  teacher's second cover upload fails.
 - A gallery photo is drawn **inside its own tile**, not opened over the page. A
   grid is meant to be looked at, and a dialog showing one image at a time puts
   that back to one press per photo; the tile carries a full-size link for when

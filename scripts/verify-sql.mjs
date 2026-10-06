@@ -252,15 +252,74 @@ try {
   check('storage: another bucket', insert(ALICE, 'other/x.png'), DENIED)
   check('storage: anon cannot write', outcome(asAnon(`insert into storage.objects (bucket_id, name) values ('event-media', '${inEventA(ALICE)}');`)), DENIED)
 
-  // A DELETE is filtered silently like an UPDATE, so this reads the count back
-  // rather than trusting the exit status.
-  const deletedBy = (uid) => {
-    sql(`insert into storage.objects (bucket_id, name) values ('event-media', '${inEventA(ALICE)}');`)
-    asUserCommit(uid, `delete from storage.objects where name = '${inEventA(ALICE)}';`)
-    return sql(`select count(*) from storage.objects where name = '${inEventA(ALICE)}';`).out
+  // ─── Reading media ───────────────────────────────────────────────────────
+  // The bucket's read policy is managers-only, and a signed URL is minted only
+  // for a caller that policy lets see the object — so this one policy is the
+  // entire read boundary. There is no second check elsewhere to fall back on.
+  const photoPath = `events/${EVENT_A}/${ALICE}/images/pic.png`
+  const seedPhoto = () => {
+    sql(`delete from storage.objects where name = '${photoPath}';`)
+    sql(`insert into storage.objects (bucket_id, name) values ('event-media', '${photoPath}');`)
   }
-  check('storage: a colleague can delete the event\'s media', deletedBy(BOB), '0')
-  check('storage: another department cannot', deletedBy(CAROL), '1')
+  const photoRows = () =>
+    sql(`select count(*) from storage.objects where name = '${photoPath}';`).out
+  const photoOwner = () =>
+    sql(`select coalesce(owner::text, 'none') from storage.objects where name = '${photoPath}';`).out
+  const reads = (uid) =>
+    asUser(uid, `select count(*) from storage.objects where name = '${photoPath}';`).out
+
+  seedPhoto()
+  // A select is filtered rather than refused, so an empty result is the denial.
+  check('storage: the uploader cannot read their own photo back', reads(ALICE), '0')
+  check('storage: a colleague cannot read it either', reads(BOB), '0')
+  check('storage: another department cannot read it', reads(CAROL), '0')
+  check('storage: anon cannot read media',
+    asAnon(`select count(*) from storage.objects where name = '${photoPath}';`).out, '0')
+
+  // Reading and writing are not independent. A DELETE with a WHERE clause reads
+  // the row it deletes, and so does an overwrite; both need this select policy
+  // on top of their own. That is why a non-manager who may insert is refused
+  // here, and why no upload path in the app is ever written twice. The upload
+  // half stays open, which is the whole point — the checks below keep "teachers
+  // can upload" from being read as "teachers can manage the files".
+  seedPhoto()
+  asUserCommit(ALICE, `delete from storage.objects where name = '${photoPath}';`)
+  check('storage: a non-manager cannot delete a photo', photoRows(), '1')
+  seedPhoto()
+  asUserCommit(BOB, `delete from storage.objects where name = '${photoPath}';`)
+  check('storage: a colleague in the owning department cannot either', photoRows(), '1')
+  seedPhoto()
+  asUserCommit(CAROL, `delete from storage.objects where name = '${photoPath}';`)
+  check('storage: another department cannot delete a photo', photoRows(), '1')
+  seedPhoto()
+  asUserCommit(ALICE, `update storage.objects set owner = '${ALICE}' where name = '${photoPath}';`)
+  check('storage: a non-manager cannot overwrite a photo', photoOwner(), 'none')
+
+  // The statement storage runs for an upsert, against the constraint it runs it
+  // against. Supabase's own docs: overwriting a file needs SELECT and UPDATE as
+  // well as INSERT. This is the case that decides how the app uploads — a fixed
+  // cover path written twice would land exactly here and fail for every
+  // non-manager, which is why every file name carries a timestamp instead.
+  seedPhoto()
+  check('storage: a non-manager upserting an existing file is refused',
+    outcome(asUser(ALICE, `insert into storage.objects (bucket_id, name)
+      values ('event-media', '${photoPath}')
+      on conflict (bucket_id, name) do update set owner = '${ALICE}';`)),
+    DENIED)
+
+  // The delete and update policies themselves are unchanged and still name the
+  // owning department, so a manager exercises them: BOB is in DEPT_A, which
+  // owns EVENT_A, and would pass without is_manager if select allowed him.
+  sql(`update public.profiles set is_manager = true where id = '${BOB}';`)
+  check('storage: a manager can read media', reads(BOB), '1')
+  seedPhoto()
+  asUserCommit(BOB, `delete from storage.objects where name = '${photoPath}';`)
+  check('storage: a manager in the owning department can delete', photoRows(), '0')
+  seedPhoto()
+  asUserCommit(BOB, `update storage.objects set owner = '${BOB}' where name = '${photoPath}';`)
+  check('storage: a manager can overwrite', photoOwner(), BOB)
+  sql(`update public.profiles set is_manager = false where id = '${BOB}';`)
+  sql(`delete from storage.objects where name = '${photoPath}';`)
 
   // ─── Events ─────────────────────────────────────────────────────────────
   // Each case writes a distinct title, so reading the title back says exactly

@@ -72,18 +72,36 @@ export default function Setup() {
       setError('That department already exists')
       return
     }
-    await addDepartment(name)
-    setNewDept('')
-    setError('')
+    try {
+      await addDepartment(name)
+      setNewDept('')
+      setError('')
+    } catch (err) {
+      // Without this the rejection is unhandled: the dialog looks like nothing
+      // happened and the duplicate name is never explained. The client-side
+      // check above only sees the departments it has loaded, so a row added
+      // from another tab still lands here on the unique constraint.
+      setError(err instanceof Error ? err.message : 'Could not add the department')
+    }
   }
 
   async function handleDeleteDepartment(id: string, name: string) {
     const assigned = users.filter((u) => u.departmentId === id).length
     const warning = assigned
-      ? `\n\n${assigned} teacher(s) are assigned to it. Their events will show as "Unknown" until you move them.`
+      ? `\n\n${assigned} teacher(s) are assigned to it and will be left with no department.`
       : ''
     if (!confirm(`Delete "${name}"?${warning}`)) return
-    await deleteDepartment(id)
+    try {
+      await deleteDepartment(id)
+      setError('')
+    } catch (err) {
+      // The delete is refused outright while any event still files under the
+      // department (events.department_id is a plain FK with no ON DELETE), and
+      // an event's department cannot be rewritten afterwards — the
+      // events_pin_immutable trigger pins it at creation. So the row is kept
+      // rather than orphaned, and the refusal is the correct behaviour to show.
+      setError(err instanceof Error ? err.message : 'Could not delete the department')
+    }
   }
 
   return (
@@ -92,7 +110,7 @@ export default function Setup() {
         <h1 className="text-2xl font-bold text-gray-900">Setup</h1>
         <p className="text-sm text-gray-500">
           Manage departments and teacher logins. Every teacher can see all events but can
-          only edit the ones they created.
+          only edit the ones filed under their own department.
         </p>
       </div>
 
@@ -185,7 +203,16 @@ export default function Setup() {
                     select that clips its own value is not a filter. */}
                 <select
                   value={u.departmentId ?? ''}
-                  onChange={(e) => updateUser(u.id, { departmentId: e.target.value || null })}
+                  // A rejection here would otherwise be unhandled and the select
+                  // would keep showing a move that never happened.
+                  onChange={(e) => {
+                    const next = e.target.value || null
+                    updateUser(u.id, { departmentId: next }).catch((err) => {
+                      setError(
+                        err instanceof Error ? err.message : 'Could not move the teacher',
+                      )
+                    })
+                  }}
                   aria-label={`Department for ${u.name}`}
                   className="w-full rounded-lg border border-gray-300 px-2 py-2.5 text-base outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100 sm:w-auto sm:pointer-fine:py-1.5 sm:pointer-fine:text-xs"
                 >

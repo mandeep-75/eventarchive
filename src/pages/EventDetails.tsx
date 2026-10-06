@@ -41,7 +41,7 @@ const REPORT_MAKER_URL = 'https://report-maker-rho.vercel.app/'
 
 export default function EventDetails() {
   const { id } = useParams<{ id: string }>()
-  const { profile } = useAuth()
+  const { profile, isManager } = useAuth()
   const [event, setEvent] = useState<CollegeEvent | null>(null)
   const [loading, setLoading] = useState(true)
   const [uploading, setUploading] = useState(false)
@@ -49,6 +49,18 @@ export default function EventDetails() {
   // Separate from `notice`, so a success does not have to be edited out before
   // a failure can be shown.
   const [error, setError] = useState('')
+  // Reset while rendering rather than in the fetch effect: the effect runs
+  // after the new URL has already been committed, so the previous event would
+  // sit under the new id for a frame — and for as long as the new fetch takes.
+  // The route reuses this component when only the id changes.
+  const [prevId, setPrevId] = useState(id)
+  if (prevId !== id) {
+    setPrevId(id)
+    setLoading(true)
+    setEvent(null)
+    setNotice('')
+    setError('')
+  }
   const imageInputRef = useRef<HTMLInputElement>(null)
   const reportInputRef = useRef<HTMLInputElement>(null)
   const { getDepartment } = useDepartments()
@@ -56,10 +68,23 @@ export default function EventDetails() {
 
   useEffect(() => {
     if (!id) return
-    getEvent(id).then((e) => {
-      setEvent(e)
-      setLoading(false)
-    })
+    let cancelled = false
+    getEvent(id)
+      .then((e) => {
+        if (cancelled) return
+        setEvent(e)
+        setLoading(false)
+      })
+      .catch((err) => {
+        // Without this the failure never turns loading off, and the page sits
+        // on a skeleton for good with nothing to say why.
+        if (cancelled) return
+        setError(err instanceof Error ? err.message : 'Could not load this event.')
+        setLoading(false)
+      })
+    return () => {
+      cancelled = true
+    }
   }, [id])
 
   const now = useNow()
@@ -71,9 +96,13 @@ export default function EventDetails() {
   //
   // The cover is signed on arrival because the list shows it and a card without
   // a picture is not a card. The gallery and the report are not: they are signed
-  // when a teacher actually opens one, so nobody pulls every photo and every
+  // when a manager actually opens one, so nobody pulls every photo and every
   // report off storage just by looking at an event.
-  const coverUrl = useSignedUrl(event?.coverImage)
+  //
+  // isManager gates all three because reading media is managers-only in
+  // schema.sql. The path itself is on the row either way, but a non-manager is
+  // never sent a request the storage policy would refuse.
+  const coverUrl = useSignedUrl(isManager ? event?.coverImage : null)
   const media = useOnDemandSigner()
 
   if (loading) {
@@ -83,7 +112,7 @@ export default function EventDetails() {
   if (!event || !resolved) {
     return (
       <div className="rounded-xl border border-dashed border-gray-300 p-12 text-center text-sm text-gray-400">
-        Event not found.
+        {error || 'Event not found.'}
       </div>
     )
   }
@@ -173,7 +202,12 @@ export default function EventDetails() {
       for (const file of chosen) {
         urls.push(await uploadEventImage(id, file, Date.now()))
       }
-      await patch({ images: [...current.images, ...urls] })
+      // The merge is a read-modify-write and `current` is the copy from when
+      // this page rendered. Another teacher adding photos in the same window
+      // would have their paths dropped by an overwrite from that stale copy, so
+      // the array is read again just before it is written.
+      const fresh = await getEvent(id)
+      await patch({ images: [...(fresh?.images ?? current.images), ...urls] })
       setNotice(`Added ${urls.length} image${urls.length === 1 ? '' : 's'}.`)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Could not upload those images.')
@@ -343,7 +377,12 @@ export default function EventDetails() {
           </div>
         )}
 
-        {current.images.length > 0 && (
+        {/* The gallery and the report are drawn for managers only: the storage
+            select policy refuses everyone else, so a non-manager's "See" would
+            fail every time. The upload buttons below stay for anyone who can
+            manage the event — filing media is part of running it, reading it
+            back is the review. Nothing here hints at how many photos exist. */}
+        {isManager && current.images.length > 0 && (
           <div className="border-t border-gray-100 p-4 sm:p-6">
             <h2 className="mb-3 text-sm font-semibold text-gray-700">Gallery</h2>
             <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
@@ -410,7 +449,7 @@ export default function EventDetails() {
           </div>
         )}
 
-        {current.report && (
+        {isManager && current.report && (
           <div className="border-t border-gray-100 p-4 sm:p-6">
             <h2 className="mb-3 text-sm font-semibold text-gray-700">Report</h2>
             <button
@@ -477,6 +516,14 @@ export default function EventDetails() {
 
               {uploading && <span className="self-center text-sm text-gray-400">Uploading…</span>}
             </div>
+
+            {/* A teacher who has just uploaded a photo finds no gallery below to
+                put it in, and an unexplained blank reads as a failed upload. */}
+            {!isManager && (
+              <p className="text-xs text-gray-400">
+                Photos and reports are visible to managers only.
+              </p>
+            )}
 
             {/* Destructive and state-changing controls, visually set apart from
                 the everyday actions above so they are not hit by accident. */}
