@@ -42,6 +42,21 @@ export function normalizeClock(value: string | null | undefined): string {
   return trimmed === '' ? '00:00' : trimmed.slice(0, 5)
 }
 
+/**
+ * "10:00" -> "10:00 AM". Falls back to the stored value if it is unparseable.
+ *
+ * One formatter used everywhere — the list card, the calendar and the details
+ * page have to render the same event's clock the same way, or the same row reads
+ * as two different times across the app.
+ */
+export function formatTime(value: string): string {
+  const match = /^(\d{1,2}):(\d{2})/.exec(value.trim())
+  if (!match) return value
+  const hour = Number(match[1])
+  if (hour > 23) return value
+  return `${hour % 12 === 0 ? 12 : hour % 12}:${match[2]} ${hour >= 12 ? 'PM' : 'AM'}`
+}
+
 /** Local-time start of the event. */
 export function eventStart(event: Pick<CollegeEvent, 'date' | 'startTime'>): Date {
   return parse(

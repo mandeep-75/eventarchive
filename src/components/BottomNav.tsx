@@ -3,10 +3,12 @@ import { useAuth } from '../context/AuthContext'
 import { NAV_ITEMS } from './navItems'
 
 /**
- * The app shell's navigation below `lg`. The sidebar used to be the only one and
- * it is `hidden lg:flex`, which did not mean "a different layout on small
- * screens" — it meant no way off the page you landed on: a phone could open the
- * dashboard and never reach Events or Setup.
+ * The app shell's navigation below `lg`. The navbar hides its own nav on a
+ * phone (there is not room for the wordmark, the links and the account all at
+ * once), and the sidebar used to be the only navigation — `hidden lg:flex`,
+ * which did not mean "a different layout on small screens" — it meant no way
+ * off the page you landed on: a phone could open the dashboard and never reach
+ * Events or Setup.
  *
  * It is at the bottom rather than the top because the top already has the navbar,
  * and a teacher's thumb reaches the bottom of a phone without the hand moving.
@@ -24,7 +26,7 @@ export default function BottomNav() {
     // phone, which otherwise sits on top of the labels.
     <nav
       aria-label="Sections"
-      className="fixed inset-x-0 bottom-0 z-30 border-t border-gray-200 bg-white/95 pb-[env(safe-area-inset-bottom)] backdrop-blur lg:hidden"
+      className="fixed inset-x-0 bottom-0 z-30 border-t border-gray-200/80 bg-white/95 pb-[env(safe-area-inset-bottom)] backdrop-blur-md lg:hidden"
     >
       <ul className="flex">
         {items.map((item) => (
@@ -35,14 +37,17 @@ export default function BottomNav() {
               className={({ isActive }) =>
                 // py-2 on a 20px icon lands the row at 44px, which is the
                 // smallest target a fingertip reliably hits.
-                `flex flex-col items-center gap-0.5 py-2 text-xs font-medium transition ${
-                  isActive ? 'text-indigo-600' : 'text-gray-500'
+                `relative flex flex-col items-center gap-0.5 py-2 text-xs font-medium transition ${
+                  isActive ? 'text-brand-700' : 'text-gray-500 hover:text-gray-700'
                 }`
               }
             >
               {({ isActive }) => (
                 <>
-                  <item.icon className={`h-5 w-5 ${isActive ? 'text-indigo-600' : ''}`} />
+                  {isActive && (
+                    <span className="absolute inset-x-5 top-0 h-0.5 rounded-full bg-brand-600" />
+                  )}
+                  <item.icon className={`h-5 w-5 ${isActive ? 'text-brand-600' : ''}`} />
                   {item.label}
                 </>
               )}

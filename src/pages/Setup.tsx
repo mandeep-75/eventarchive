@@ -115,6 +115,78 @@ export default function Setup() {
       </div>
 
       <section className="space-y-3">
+        <h2 className="font-semibold text-gray-900">Teachers</h2>
+        {users.length === 0 ? (
+          <p className="text-sm text-gray-400">No teacher accounts yet.</p>
+        ) : (
+          <ul className="divide-y divide-gray-100 rounded-xl border border-gray-200 bg-white">
+            {users.map((u) => (
+              <li key={u.id} className="flex flex-wrap items-center gap-3 px-4 py-3">
+                <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-brand-100 text-brand-700">
+                  <Users className="h-4 w-4" />
+                </span>
+                <div className="min-w-0 flex-1">
+                  <p className="flex min-w-0 items-center gap-1.5 font-medium text-gray-900">
+                    <span className="truncate">{u.name}</span>
+                    {u.id === profile?.id && (
+                      <span className="shrink-0 rounded bg-gray-100 px-1.5 py-0.5 text-[10px] font-medium text-gray-500">
+                        you
+                      </span>
+                    )}
+                    {u.isManager && (
+                      <span
+                        title="Manages departments and teacher accounts"
+                        className="inline-flex shrink-0 items-center gap-0.5 rounded bg-brand-50 px-1.5 py-0.5 text-[10px] font-medium text-brand-700"
+                      >
+                        <BadgeCheck className="h-3 w-3" /> manager
+                      </span>
+                    )}
+                  </p>
+                  <p className="truncate text-xs text-gray-500">{u.email}</p>
+                </div>
+                {/* A teacher's department can be changed here; a manager's is not
+                    editable, because a manager has no department of their own to
+                    be moved out of. */}
+                {u.isManager ? (
+                  <span className="w-full shrink-0 rounded-md bg-gray-50 px-2 py-1 text-xs font-medium text-gray-500 sm:w-auto">
+                    {departments.find((d) => d.id === u.departmentId)?.name ?? 'No department'}
+                  </span>
+                ) : (
+                  /* Full width below sm: sharing a line with the name left this
+                     select narrower than its longest option on a phone, and a
+                     select that clips its own value is not a filter. */
+                  <select
+                    value={u.departmentId ?? ''}
+                    // A rejection here would otherwise be unhandled and the select
+                    // would keep showing a move that never happened.
+                    onChange={(e) => {
+                      const next = e.target.value || null
+                      updateUser(u.id, { departmentId: next }).catch((err) => {
+                        setError(
+                          err instanceof Error ? err.message : 'Could not move the teacher',
+                        )
+                      })
+                    }}
+                    aria-label={`Department for ${u.name}`}
+                    className="w-full rounded-lg border border-gray-300 px-2 py-2.5 text-base outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-500/20 sm:w-auto sm:pointer-fine:py-1.5 sm:pointer-fine:text-xs"
+                  >
+                    <option value="">No department</option>
+                    {departments.map((d) => (
+                      <option key={d.id} value={d.id}>
+                        {d.name}
+                      </option>
+                    ))}
+                  </select>
+                )}
+              </li>
+            ))}
+          </ul>
+        )}
+      </section>
+
+      <CreateTeacher departments={departments} />
+
+      <section className="space-y-3">
         <h2 className="font-semibold text-gray-900">Departments</h2>
         {/* Stacks below sm. A fixed w-64 input next to the button is ~344px
             wide, which is more than a 360px phone has left after the page
@@ -127,11 +199,11 @@ export default function Setup() {
               setError('')
             }}
             placeholder="New department name"
-            className="w-full rounded-lg border border-gray-300 px-3 py-2.5 text-base outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100 sm:w-64 sm:pointer-fine:py-2 sm:pointer-fine:text-sm"
+            className="w-full rounded-lg border border-gray-300 px-3 py-2.5 text-base outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-500/20 sm:w-64 sm:pointer-fine:py-2 sm:pointer-fine:text-sm"
           />
           <button
             type="submit"
-            className="inline-flex items-center justify-center gap-1.5 rounded-lg bg-indigo-600 px-3 py-2.5 text-sm font-semibold text-white transition hover:bg-indigo-700 sm:pointer-fine:py-2"
+            className="inline-flex items-center justify-center gap-1.5 rounded-lg bg-brand-600 px-3 py-2.5 text-sm font-semibold text-white transition hover:bg-brand-700 sm:pointer-fine:py-2"
           >
             <Plus className="h-4 w-4" /> Add
           </button>
@@ -140,7 +212,7 @@ export default function Setup() {
 
         {departments.length === 0 ? (
           <p className="text-sm text-gray-400">
-            No departments yet. Add one so teachers can be assigned to it.
+            No departments yet. Add one to assign teachers.
           </p>
         ) : (
           <ul className="divide-y divide-gray-100 rounded-xl border border-gray-200 bg-white">
@@ -160,69 +232,6 @@ export default function Setup() {
                 >
                   <Trash2 className="h-4 w-4" />
                 </button>
-              </li>
-            ))}
-          </ul>
-        )}
-      </section>
-
-      <CreateTeacher departments={departments} />
-
-      <section className="space-y-3">
-        <h2 className="font-semibold text-gray-900">Teachers</h2>
-        {users.length === 0 ? (
-          <p className="text-sm text-gray-400">No teacher accounts yet.</p>
-        ) : (
-          <ul className="divide-y divide-gray-100 rounded-xl border border-gray-200 bg-white">
-            {users.map((u) => (
-              <li key={u.id} className="flex flex-wrap items-center gap-3 px-4 py-3">
-                <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-indigo-100 text-indigo-700">
-                  <Users className="h-4 w-4" />
-                </span>
-                <div className="min-w-0 flex-1">
-                  <p className="flex min-w-0 items-center gap-1.5 font-medium text-gray-900">
-                    <span className="truncate">{u.name}</span>
-                    {u.id === profile?.id && (
-                      <span className="shrink-0 rounded bg-gray-100 px-1.5 py-0.5 text-[10px] font-medium text-gray-500">
-                        you
-                      </span>
-                    )}
-                    {u.isManager && (
-                      <span
-                        title="Can manage departments and create teacher accounts"
-                        className="inline-flex shrink-0 items-center gap-0.5 rounded bg-indigo-50 px-1.5 py-0.5 text-[10px] font-medium text-indigo-700"
-                      >
-                        <BadgeCheck className="h-3 w-3" /> manager
-                      </span>
-                    )}
-                  </p>
-                  <p className="truncate text-xs text-gray-500">{u.email}</p>
-                </div>
-                {/* Full width below sm: sharing a line with the name left this
-                    select narrower than its longest option on a phone, and a
-                    select that clips its own value is not a filter. */}
-                <select
-                  value={u.departmentId ?? ''}
-                  // A rejection here would otherwise be unhandled and the select
-                  // would keep showing a move that never happened.
-                  onChange={(e) => {
-                    const next = e.target.value || null
-                    updateUser(u.id, { departmentId: next }).catch((err) => {
-                      setError(
-                        err instanceof Error ? err.message : 'Could not move the teacher',
-                      )
-                    })
-                  }}
-                  aria-label={`Department for ${u.name}`}
-                  className="w-full rounded-lg border border-gray-300 px-2 py-2.5 text-base outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100 sm:w-auto sm:pointer-fine:py-1.5 sm:pointer-fine:text-xs"
-                >
-                  <option value="">No department</option>
-                  {departments.map((d) => (
-                    <option key={d.id} value={d.id}>
-                      {d.name}
-                    </option>
-                  ))}
-                </select>
               </li>
             ))}
           </ul>
@@ -278,8 +287,8 @@ function CreateTeacher({ departments }: { departments: { id: string; name: strin
     <section className="space-y-3">
       <h2 className="font-semibold text-gray-900">Add a teacher</h2>
       <p className="text-sm text-gray-500">
-        Creates the login and files the teacher under a department. You can move them to a
-        different one later using the list below.
+        Creates the login and files the teacher under a department. Move them later from the
+        list above.
       </p>
       <form
         onSubmit={handleSubmit}
@@ -295,7 +304,7 @@ function CreateTeacher({ departments }: { departments: { id: string; name: strin
               required
               value={name}
               onChange={(e) => setName(e.target.value)}
-              className="w-full rounded-lg border border-gray-300 px-3 py-2.5 text-base outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100 sm:pointer-fine:py-2 sm:pointer-fine:text-sm"
+              className="w-full rounded-lg border border-gray-300 px-3 py-2.5 text-base outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-500/20 sm:pointer-fine:py-2 sm:pointer-fine:text-sm"
             />
           </div>
           <div>
@@ -309,7 +318,7 @@ function CreateTeacher({ departments }: { departments: { id: string; name: strin
               autoComplete="off"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
-              className="w-full rounded-lg border border-gray-300 px-3 py-2.5 text-base outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100 sm:pointer-fine:py-2 sm:pointer-fine:text-sm"
+              className="w-full rounded-lg border border-gray-300 px-3 py-2.5 text-base outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-500/20 sm:pointer-fine:py-2 sm:pointer-fine:text-sm"
             />
           </div>
           <div>
@@ -324,7 +333,7 @@ function CreateTeacher({ departments }: { departments: { id: string; name: strin
                 autoComplete="new-password"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
-                className="w-full rounded-lg border border-gray-300 py-2.5 pl-3 pr-11 text-base outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100 sm:pointer-fine:py-2 sm:pointer-fine:pr-10 sm:pointer-fine:text-sm"
+                className="w-full rounded-lg border border-gray-300 py-2.5 pl-3 pr-11 text-base outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-500/20 sm:pointer-fine:py-2 sm:pointer-fine:pr-10 sm:pointer-fine:text-sm"
               />
               <button
                 type="button"
@@ -347,7 +356,7 @@ function CreateTeacher({ departments }: { departments: { id: string; name: strin
               required
               value={departmentId}
               onChange={(e) => setDepartmentId(e.target.value)}
-              className="w-full rounded-lg border border-gray-300 px-3 py-2.5 text-base outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100 sm:pointer-fine:py-2 sm:pointer-fine:text-sm"
+              className="w-full rounded-lg border border-gray-300 px-3 py-2.5 text-base outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-500/20 sm:pointer-fine:py-2 sm:pointer-fine:text-sm"
             >
               <option value="">Select department</option>
               {departments.map((d) => (
@@ -364,7 +373,7 @@ function CreateTeacher({ departments }: { departments: { id: string; name: strin
         <button
           type="submit"
           disabled={submitting}
-          className="inline-flex w-full items-center justify-center gap-1.5 rounded-lg bg-indigo-600 px-3 py-2.5 text-sm font-semibold text-white transition hover:bg-indigo-700 disabled:opacity-50 sm:w-auto sm:pointer-fine:py-2"
+          className="inline-flex w-full items-center justify-center gap-1.5 rounded-lg bg-brand-600 px-3 py-2.5 text-sm font-semibold text-white transition hover:bg-brand-700 disabled:opacity-50 sm:w-auto sm:pointer-fine:py-2"
         >
           <UserPlus className="h-4 w-4" />
           {submitting ? 'Creating…' : 'Create teacher'}

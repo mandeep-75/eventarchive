@@ -1,6 +1,5 @@
 import { Outlet } from 'react-router-dom'
 import Navbar from './Navbar'
-import Sidebar from './Sidebar'
 import BottomNav from './BottomNav'
 
 export default function Layout() {
@@ -10,15 +9,15 @@ export default function Layout() {
     // bottom of <main> is unreachable behind the tab bar. dvh is the viewport the
     // browser is actually showing right now.
     <div className="flex h-dvh flex-col overflow-hidden bg-gray-50">
+      {/* The desktop navigation lives in the navbar — the sidebar is gone, so a
+          teacher only ever sees the one nav, moved to the top on a wide screen
+          and to the bottom tab bar below it. */}
       <Navbar />
-      <div className="flex min-h-0 flex-1">
-        <Sidebar />
-        {/* pb-20 clears the fixed tab bar on small screens; lg has no bar, so it
-            goes back to the normal gutter. */}
-        <main className="min-w-0 flex-1 overflow-y-auto p-4 pb-20 lg:p-6">
-          <Outlet />
-        </main>
-      </div>
+      {/* pb-20 clears the fixed tab bar on small screens; lg has no bar, so it
+          goes back to the normal gutter. */}
+      <main className="min-h-0 flex-1 overflow-y-auto p-4 pb-20 lg:p-6">
+        <Outlet />
+      </main>
       <BottomNav />
       {/* pointer-events-none so it can never swallow a click meant for the
           content underneath. Only rendered inside the app shell, so it does

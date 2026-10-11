@@ -47,17 +47,17 @@ export default function Login() {
     // once the keyboard is up, which pushes the Sign In button under it.
     <div className="flex min-h-dvh items-center justify-center bg-gray-50 px-4 py-8">
       <div className="w-full max-w-sm">
-        <div className="mb-8 flex flex-col items-center gap-2">
-          <span className="flex h-12 w-12 items-center justify-center rounded-xl bg-indigo-600 text-white">
+        <div className="mb-8 flex flex-col items-center gap-2.5">
+          <span className="flex h-12 w-12 items-center justify-center rounded-xl bg-brand-600 text-white shadow-card ring-1 ring-inset ring-white/15">
             <School className="h-6 w-6" />
           </span>
-          <h1 className="text-xl font-bold text-gray-900">College Event Hub</h1>
+          <h1 className="text-xl font-bold tracking-tight text-gray-900">College Event Hub</h1>
           <p className="text-sm text-gray-500">Sign in to your account</p>
         </div>
 
         <form
           onSubmit={handleSubmit}
-          className="space-y-4 rounded-xl border border-gray-200 bg-white p-5 shadow-sm sm:p-6"
+          className="space-y-4 rounded-xl border border-gray-200 bg-white p-5 shadow-card sm:p-6"
         >
           <div>
             <label htmlFor="email" className="mb-1 block text-sm font-medium text-gray-700">
@@ -70,7 +70,7 @@ export default function Login() {
               autoComplete="email"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
-              className="w-full rounded-lg border border-gray-300 px-3 py-2.5 text-base outline-none transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100 sm:pointer-fine:py-2 sm:pointer-fine:text-sm"
+              className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2.5 text-base text-gray-900 shadow-sm outline-none transition placeholder:text-gray-400 focus:border-brand-500 focus:ring-2 focus:ring-brand-500/20 sm:pointer-fine:py-2 sm:pointer-fine:text-sm"
               placeholder="you@college.edu"
             />
           </div>
@@ -87,7 +87,7 @@ export default function Login() {
                 autoComplete="current-password"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
-                className="w-full rounded-lg border border-gray-300 py-2.5 pl-3 pr-11 text-base outline-none transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100 sm:pointer-fine:py-2 sm:pointer-fine:pr-10 sm:pointer-fine:text-sm"
+                className="w-full rounded-lg border border-gray-300 bg-white py-2.5 pl-3 pr-11 text-base text-gray-900 shadow-sm outline-none transition placeholder:text-gray-400 focus:border-brand-500 focus:ring-2 focus:ring-brand-500/20 sm:pointer-fine:py-2 sm:pointer-fine:pr-10 sm:pointer-fine:text-sm"
                 placeholder="••••••••"
               />
               <button
@@ -107,7 +107,7 @@ export default function Login() {
           </div>
 
           {error && (
-            <p className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-600">
+            <p role="alert" className="rounded-lg bg-danger-50 px-3 py-2 text-sm text-danger-700 ring-1 ring-inset ring-danger-600/10">
               {error}
             </p>
           )}
@@ -115,7 +115,7 @@ export default function Login() {
           <button
             type="submit"
             disabled={submitting}
-            className="w-full rounded-lg bg-indigo-600 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-indigo-700 disabled:opacity-50 sm:pointer-fine:py-2"
+            className="w-full rounded-lg bg-brand-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-brand-700 active:bg-brand-800 disabled:opacity-50 sm:pointer-fine:py-2"
           >
             {submitting ? 'Signing in…' : 'Sign In'}
           </button>

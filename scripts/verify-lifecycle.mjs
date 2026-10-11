@@ -202,7 +202,14 @@ for (const t of ['public.events', 'public.profiles', 'public.departments']) {
 // should do by accident — the accounts would be left unable to sign in at all.
 check('sql: reset.sql does not touch auth.users', /\bauth\s*\.\s*users\b/.test(reset), false)
 
-const eventsHook = readFileSync(new URL('../src/hooks/useEvents.ts', import.meta.url), 'utf8')
+// A hand-typed /events/lol hit Postgres with "invalid input syntax for type
+// uuid" because the cast runs before any policy can say no. The id is refused
+// before the query instead, so a bad URL reads as an ordinary not-found.
+const dataSrc = readFileSync(new URL('../src/supabase/data.ts', import.meta.url), 'utf8')
+check('app: a non-uuid event id never reaches Postgres',
+  /if \(!UUID_RE\.test\(id\)\) return null/.test(dataSrc), true)
+
+const eventsHookSrc = readFileSync(new URL('../src/hooks/useEvents.ts', import.meta.url), 'utf8')
 const statusLib = readFileSync(new URL('../src/lib/eventStatus.ts', import.meta.url), 'utf8')
 const typesSrc = readFileSync(new URL('../src/types/index.ts', import.meta.url), 'utf8')
 // Every source file, so a check can assert something is absent everywhere rather
@@ -232,7 +239,7 @@ check('sql: no privileged status writer', /security definer[\s\S]{0,400}status/i
 check('app: the event type has no status field',
   /status: EventStatus/.test(readFileSync(new URL('../src/types/index.ts', import.meta.url), 'utf8')
     .split('export interface CollegeEvent')[1] ?? ''), false)
-check('app: no status write-back from the list', /updateEvent|planStatusSync/.test(eventsHook), false)
+check('app: no status write-back from the list', /updateEvent|planStatusSync/.test(eventsHookSrc), false)
 check('app: the rule reads only date, times and report',
   /export type StatusInput = Pick<[\s\S]*?'date' \| 'startTime' \| 'endTime' \| 'report'/.test(statusLib), true)
 
@@ -319,11 +326,12 @@ check('ts: creating an event does not require a name',
   /Omit<CollegeEvent, 'createdAt' \| 'updatedAt' \| 'coordinatorName'>/.test(mapperSrc), true)
 
 // ─── There is still a way to navigate on a phone ───────────────────────────
-// The sidebar was `hidden lg:flex`, which did not mean "the layout changes on a
-// small screen" — it meant a phone that opened the dashboard could not reach
-// Events or Setup at all, because nothing else drew the nav. The two views now
-// share one list, so they cannot drift into being different sections.
-const sidebarSrc = readFileSync(new URL('../src/components/Sidebar.tsx', import.meta.url), 'utf8')
+// The sidebar used to be `hidden lg:flex`, which did not mean "the layout
+// changes on a small screen" — it meant a phone that opened the dashboard could
+// not reach Events or Setup at all. The sidebar is gone entirely: the navbar
+// draws the same list on a wide screen and BottomNav on a phone, so the two
+// cannot drift into being different sections.
+const navbarSrc = readFileSync(new URL('../src/components/Navbar.tsx', import.meta.url), 'utf8')
 const bottomNavSrc = readFileSync(new URL('../src/components/BottomNav.tsx', import.meta.url), 'utf8')
 const navItemsSrc = readFileSync(new URL('../src/components/navItems.ts', import.meta.url), 'utf8')
 const layoutSrc = readFileSync(new URL('../src/components/Layout.tsx', import.meta.url), 'utf8')
@@ -334,11 +342,11 @@ const stripComments = (s) => s.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/[^\
 const layoutCode = stripComments(layoutSrc)
 
 check('ui: the nav list is declared once', /export const NAV_ITEMS/.test(navItemsSrc), true)
-check('ui: the sidebar reads that one list',
-  /from '\.\/navItems'/.test(sidebarSrc) && !/NAV_ITEMS\s*[:=]\s*\[/.test(sidebarSrc), true)
+check('ui: the navbar reads that one list',
+  /from '\.\/navItems'/.test(navbarSrc) && !/NAV_ITEMS\s*[:=]\s*\[/.test(navbarSrc), true)
 check('ui: the small-screen nav reads it too',
   /from '\.\/navItems'/.test(bottomNavSrc) && !/NAV_ITEMS\s*[:=]\s*\[/.test(bottomNavSrc), true)
-// Below lg the sidebar is display:none, so BottomNav is the only navigation
+// Below lg the navbar hides its nav, so BottomNav is the only navigation
 // there. It must therefore actually be mounted rather than merely defined.
 check('ui: the small-screen nav is mounted, not just written',
   /<BottomNav\s*\/>/.test(layoutCode), true)
@@ -397,6 +405,17 @@ check('ui: the Only mine filter is gone', /value="mine"/.test(eventsSrc), false)
 // deliberately matches on props instead of words for the same reason).
 check('ui: nothing compares an event against the signed-in user',
   /isMine/.test(stripComments(eventsSrc + hooksSrc)), false)
+
+// Filing is scoped to the caller's department by the insert policy, and
+// managers have no department — so no department means no "New Event" button,
+// and the create form refuses the page outright rather than waiting for a
+// submit that every policy would reject.
+check('ui: an account without a department is not offered New Event',
+  /myDepartmentId && \([\s\S]{0,120}<Link\s+to="\/events\/create"/.test(stripComments(eventsSrc)), true)
+check('ui: the create form blocks an account without a department',
+  /if \(!departmentId\) \{[\s\S]{0,500}You can&rsquo;t create an event yet/.test(
+    stripComments(readFileSync(new URL('../src/pages/CreateEvent.tsx', import.meta.url), 'utf8')),
+  ), true)
 
 // The Events page leads with the viewer's own department — the events they can
 // actually edit — then orders what is left by when it was filed. Two different
@@ -466,7 +485,7 @@ check('sql: the media helper is not exposed to anon',
 
 // Only managers read media. The policy in schema.sql is the boundary; the app's
 // half is not firing requests it knows will be refused, so every signing site
-// is gated on isManager and the gallery and report are not drawn at all. A page
+// is gated on isManager and the report section is not drawn at all. A page
 // that signed a whole event's media on arrival would still be safe now, but it
 // would be a request per denied object on every view.
 const detailsSrc = readFileSync(new URL('../src/pages/EventDetails.tsx', import.meta.url), 'utf8')
@@ -477,25 +496,26 @@ check('app: the cover is signed on load',
   /useSignedUrl\(isManager \? event\?\.coverImage : null\)/.test(detailsSrc), true)
 check('app: a card does not sign a cover for a non-manager',
   /useSignedUrl\(isManager \? event\.coverImage : null\)/.test(cardSrc), true)
-check('app: the gallery is not signed on load',
-  /useSignedUrls?\(event\?\.images/.test(detailsSrc), false)
-check('app: the gallery is not drawn for a non-manager',
-  /isManager && current\.images\.length/.test(detailsSrc), true)
+// There is no photo gallery: the details page neither signs one nor renders one.
+check('app: the details page has no gallery to sign',
+  /event\?\.images|current\.images/.test(detailsSrc), false)
 check('app: the report is not signed on load',
   /useSignedUrl\(event\?\.report\)/.test(detailsSrc), false)
 check('app: the report is not drawn for a non-manager',
   /isManager && current\.report/.test(detailsSrc), true)
-// The read half must not have swallowed the write half. Uploading is part of
-// running an event and stays with the department, so the controls live in the
-// canManage branch and are not behind isManager.
+// The report is manager-only end to end: reading it and filing it both live in
+// the isManager branch. A department teacher who can manage the event still gets
+// Edit and the report maker, but not the upload.
 const actionBarSrc = detailsSrc.slice(detailsSrc.indexOf('{canManage ? ('))
-check('app: a non-manager teacher can still upload photos and a report',
-  /Add photos/.test(actionBarSrc) && /Upload report/.test(actionBarSrc), true)
+check('app: report uploads are managers only',
+  /isManager && \(/.test(actionBarSrc) && /Upload report/.test(actionBarSrc), true)
+check('app: a non-manager is never offered photo uploads',
+  !/Add photos|uploadEventImage/.test(detailsSrc), true)
 // Postgres needs select visibility for `on conflict do update` as well as for a
 // DELETE, so a write that reuses a path would be refused for a non-manager —
 // the second cover upload of the event would be the one to fail. Every upload is
 // therefore a fresh insert: no upsert anywhere, and the cover's file name is
-// stamped like the gallery's and the report's.
+// stamped like the report's.
 check('app: no upload reuses a storage path', /upsert:/.test(storageSrc), false)
 check('app: the cover filename is stamped like every other upload',
   /\$\{Date\.now\(\)\}-cover\.jpg/.test(storageSrc), true)
@@ -518,28 +538,18 @@ check('app: the signer returns the URL rather than opening it',
 // only asks for the bytes when something renders or opens it.
 check('app: nothing fetches a file behind a render',
   !/fetch\(/.test(storageSrc) && !/new Image\(\)/.test(storageSrc), true)
-// A gallery photo is loaded into its own tile, not opened over the page. The
-// whole point of a grid is being able to look at it, and a dialog showing one
-// image at a time puts that back to one press per photo. The full-size link is
-// the deliberate way out, so nothing is lost.
-check('app: a gallery photo is drawn inside its own tile',
-  /const shown = media\.urls\[path\]/.test(detailsSrc) &&
-  /<img[\s\S]*?src=\{shown\}/.test(detailsSrc), true)
-check('app: no photo is opened over the page',
+// Media is never opened over the page: the report goes to a new tab instead.
+check('app: no media is opened over the page',
   /setPreview|role="dialog"/.test(detailsSrc), false)
-// Once a photo is asked for it stays in its tile — there is no toggle back to
-// the placeholder, and no second control to get wrong.
-check('app: a loaded photo stays shown', /Hide/.test(detailsSrc), false)
-// Signing is per tile, not per page: a second tile pressed while the first is
+// Signing is on demand, not per page: a second request made while a first is
 // still loading has to work, which a single `pending` slot would silently break.
 check('app: loading state is tracked per path',
   /useState<Record<string, boolean>>\(\{\}\)/.test(storageSrc), true)
-// The report is still a document rather than a picture, so it keeps going to a
-// new tab — that is not the same decision as the gallery.
-check('app: and the report is still handed to a new tab',
+// The report is a document rather than a picture, so it goes to a new tab.
+check('app: the report is handed to a new tab',
   /window\.open\(url, '_blank'/.test(detailsSrc), true)
 // A hook that signs a whole list at once is the thing this replaces; it is named
-// here so a future gallery cannot quietly reintroduce it.
+// here so a future media list cannot quietly reintroduce it.
 check('app: nothing signs a list of paths in one pass',
   /useSignedUrls|Promise\.all\(list\.map/.test(storageSrc), false)
 
@@ -585,7 +595,7 @@ check('app: a report is never re-encoded as an image',
 check('app: the stored name follows the bytes it stores',
   /withExtension\(fileName, compressed\.ext\)/.test(storageSrc), true)
 // A report is never compressed, so the bucket's own limit is still what bounds it,
-// and an image is only bounded by what we are willing to decode into memory.
+// and an image is capped at 1 MB by both the form and this choke point.
 check('app: a report is still held to the bucket limit',
   /const limit = isReport \? MAX_BYTES : MAX_INPUT_BYTES/.test(storageSrc), true)
 // `canvas.toBlob` does not fail when it cannot honour the requested type — it
@@ -647,6 +657,10 @@ check('input: a speaker is trimmed', val({ guestSpeaker: ' Dr Rao ' }).guestSpea
 // `accept="image/*"` is only a hint; a renamed file gets through.
 check('input: a non-image cover is refused', checkImageFile({ name: 'notes.txt', type: 'text/plain' }).ok, false)
 check('input: an image cover is allowed', checkImageFile({ name: 'a.png', type: 'image/png' }).ok, true)
+check('input: an image at the 1 MB cap is allowed',
+  checkImageFile({ name: 'a.png', type: 'image/png', size: 1024 * 1024 }).ok, true)
+check('input: an image over 1 MB is refused',
+  checkImageFile({ name: 'big.png', type: 'image/png', size: 2 * 1024 * 1024 }).ok, false)
 
 // A report is a write-up, so documents count as well as photos of one. Matched
 // on the extension too, because Word files often arrive with an empty type.

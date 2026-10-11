@@ -17,8 +17,8 @@ const SIGNED_URL_TTL = 60 * 60 * 24 * 7
  *
  * The returned value is the storage *path*, not a URL. The bucket is private so
  * that the managers-only read rule in schema.sql actually applies; render it
- * through useSignedUrl (cover) or useOnDemandSigner (everything else), and only
- * for a manager — anyone else's signature request is refused by the policy.
+ * through useSignedUrl (cover) or useOnDemandSigner (report), and only for a
+ * manager — anyone else's signature request is refused by the policy.
  */
 async function pathFor(eventId: string, folder: string, fileName: string) {
   const { data } = await supabase.auth.getSession()
@@ -31,26 +31,23 @@ async function pathFor(eventId: string, folder: string, fileName: string) {
 const MAX_BYTES = 10 * 1024 * 1024
 
 /**
- * The largest file the browser will even try to read, as opposed to the largest
- * one the bucket will accept.
+ * Image upload cap.
  *
- * Deliberately separate from MAX_BYTES. An image is re-encoded before it is
- * uploaded, so a 14 MB phone photo is no longer a problem — it lands as a few
- * hundred KB. Holding it to the bucket's limit would reject the exact case the
- * compression exists to rescue. A report is never re-encoded, so it is still
- * held to MAX_BYTES, and this is only the ceiling on what we are willing to
- * decode into memory.
+ * The same 1 MB cover limit the forms enforce (COVER_MAX_BYTES in eventInput.ts)
+ * is checked again here, so a caller that bypasses the form hits the same wall.
+ * Deliberately separate from MAX_BYTES: a report is never re-encoded and stays
+ * on the bucket's 10 MB limit, while an image is compressed on the way in and
+ * is capped at 1 MB as it arrives.
  */
-const MAX_INPUT_BYTES = 40 * 1024 * 1024
+const MAX_INPUT_BYTES = 1 * 1024 * 1024
 
 /**
  * Longest edge, in pixels, of an uploaded image.
  *
  * Sized to the largest an image is ever *drawn*: the cover is a `max-w-3xl`
- * article, so ~670px wide, and a gallery tile is an aspect-square box of about
- * 300px. A gallery photo is also linked at full size, so this is not a crop to
- * what the UI happens to show today — it is the point past which the extra
- * pixels are paid for on every view and looked at by nobody.
+ * article, so ~670px wide. This is not a crop to what the UI happens to show
+ * today — it is the point past which the extra pixels are paid for on every
+ * view and looked at by nobody.
  */
 const MAX_EDGE = 1600
 
@@ -237,10 +234,6 @@ export function uploadCoverImage(eventId: string, file: File) {
   return upload(file, eventId, 'cover', `${Date.now()}-cover.jpg`)
 }
 
-export function uploadEventImage(eventId: string, file: File, stamp: number | string) {
-  return upload(file, eventId, 'images', `${stamp}-${file.name}`)
-}
-
 export function uploadReport(eventId: string, file: File) {
   return upload(file, eventId, 'report', `${Date.now()}-${file.name}`)
 }
@@ -267,28 +260,27 @@ export async function signUrl(path: string | null | undefined): Promise<string |
 /**
  * Signs a path when someone asks for it, rather than when the page loads.
  *
- * A gallery holds a dozen photos and a report is often a multi-page PDF, and the
- * storage policy lets a manager read all of it — so signing a whole event's
- * media on arrival means every manager who opens the page pulls every file,
- * whether or not they ever look at it. Nothing is fetched here either: this
+ * A report is often a multi-page PDF and the storage policy lets a manager read
+ * it — so signing it on arrival means every manager who opens the page pulls the
+ * file whether or not they ever look at it. Nothing is fetched here either: this
  * only mints the URL, and the file itself is requested by whoever opens it.
  *
  * The cover is the deliberate exception, in `useSignedUrl` below. It is the one
  * image a list shows, so a card without it is not a card.
  *
- * Returns the URL rather than opening it, so the caller decides what "See" means:
- * a photo is shown in its own tile, and a report is handed to a new tab because a
- * document is not something to render inside a page.
+ * Returns the URL rather than opening it, so the caller decides what "open"
+ * means: a report is handed to a new tab because a document is not something to
+ * render inside a page.
  *
  * Results are cached by path for the life of the page, because a signature is
- * good for `SIGNED_URL_TTL` and re-opening the same photo should not ask again —
+ * good for `SIGNED_URL_TTL` and re-opening the same report should not ask again —
  * so a second view is immediate and never touches the network.
  *
- * `urls` holds everything signed so far, so a gallery tile can render the photo
- * it asked for without the component keeping its own copy. It is a map rather than
- * one string because a teacher can open several tiles in a row, and `pending` is a
- * map for the same reason: a single slot would make a second tile look idle while
- * the first was still loading, and clicking it would then be a no-op.
+ * `urls` holds everything signed so far, so the caller can render what it asked
+ * for without keeping its own copy. It is a map rather than one string so a
+ * second request can be made while a first is still loading, and `pending` is a
+ * map for the same reason: a single slot would make a second request look idle
+ * while the first was still loading, and asking again would then be a no-op.
  */
 export function useOnDemandSigner() {
   const cache = useRef<Record<string, string>>({})

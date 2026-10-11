@@ -228,7 +228,7 @@ export default function EditEvent() {
             maxLength={LIMITS.title}
             value={title}
             onChange={(e) => setTitle(e.target.value)}
-            className="w-full rounded-lg border border-gray-300 px-3 py-2.5 text-base outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100 sm:pointer-fine:py-2 sm:pointer-fine:text-sm"
+            className="w-full rounded-lg border border-gray-300 px-3 py-2.5 text-base outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-500/20 sm:pointer-fine:py-2 sm:pointer-fine:text-sm"
           />
         </div>
 
@@ -238,8 +238,8 @@ export default function EditEvent() {
             <p className="flex items-start gap-2 rounded-lg bg-gray-50 px-3 py-2 text-sm text-gray-600">
               <Info className="mt-0.5 h-3.5 w-3.5 shrink-0 text-gray-400" />
               {getDepartment(departmentId)?.name
-                ? `Filed under ${getDepartment(departmentId)?.name}. An event cannot be moved to another department.`
-                : 'This event has no department. Ask a manager to correct it.'}
+                ? `Filed under ${getDepartment(departmentId)?.name}. Cannot change department.`
+                : 'No department set. Ask a manager to fix it.'}
             </p>
           </div>
           <div>
@@ -247,8 +247,8 @@ export default function EditEvent() {
             <p className="flex items-start gap-2 rounded-lg bg-gray-50 px-3 py-2 text-sm text-gray-600">
               <Info className="mt-0.5 h-3.5 w-3.5 shrink-0 text-gray-400" />
               {projectedStatus
-                ? `Will be “${STATUS_LABELS[projectedStatus]}” based on the date.${hasReport ? '' : ' Without a report it is cancelled once the grace period ends.'}`
-                : 'Worked out automatically from the date.'}
+                ? `Will be “${STATUS_LABELS[projectedStatus]}” based on the date.${hasReport ? '' : ' Without a report, cancelled after the grace period.'}`
+                : 'Derived automatically from the date.'}
             </p>
           </div>
         </div>
@@ -264,7 +264,7 @@ export default function EditEvent() {
               required
               value={date}
               onChange={(e) => setDate(e.target.value)}
-              className="w-full rounded-lg border border-gray-300 px-3 py-2.5 text-base outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100 sm:pointer-fine:py-2 sm:pointer-fine:text-sm"
+              className="w-full rounded-lg border border-gray-300 px-3 py-2.5 text-base outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-500/20 sm:pointer-fine:py-2 sm:pointer-fine:text-sm"
             />
           </div>
           <div>
@@ -277,7 +277,7 @@ export default function EditEvent() {
               required
               value={startTime}
               onChange={(e) => setStartTime(e.target.value)}
-              className="w-full rounded-lg border border-gray-300 px-3 py-2.5 text-base outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100 sm:pointer-fine:py-2 sm:pointer-fine:text-sm"
+              className="w-full rounded-lg border border-gray-300 px-3 py-2.5 text-base outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-500/20 sm:pointer-fine:py-2 sm:pointer-fine:text-sm"
             />
           </div>
           <div>
@@ -290,7 +290,7 @@ export default function EditEvent() {
               required
               value={endTime}
               onChange={(e) => setEndTime(e.target.value)}
-              className="w-full rounded-lg border border-gray-300 px-3 py-2.5 text-base outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100 sm:pointer-fine:py-2 sm:pointer-fine:text-sm"
+              className="w-full rounded-lg border border-gray-300 px-3 py-2.5 text-base outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-500/20 sm:pointer-fine:py-2 sm:pointer-fine:text-sm"
             />
           </div>
         </div>
@@ -306,7 +306,7 @@ export default function EditEvent() {
             maxLength={LIMITS.venue}
             value={venue}
             onChange={(e) => setVenue(e.target.value)}
-            className="w-full rounded-lg border border-gray-300 px-3 py-2.5 text-base outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100 sm:pointer-fine:py-2 sm:pointer-fine:text-sm"
+            className="w-full rounded-lg border border-gray-300 px-3 py-2.5 text-base outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-500/20 sm:pointer-fine:py-2 sm:pointer-fine:text-sm"
           />
         </div>
 
@@ -320,7 +320,7 @@ export default function EditEvent() {
             maxLength={LIMITS.guestSpeaker}
             value={guestSpeaker}
             onChange={(e) => setGuestSpeaker(e.target.value)}
-            className="w-full rounded-lg border border-gray-300 px-3 py-2.5 text-base outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100 sm:pointer-fine:py-2 sm:pointer-fine:text-sm"
+            className="w-full rounded-lg border border-gray-300 px-3 py-2.5 text-base outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-500/20 sm:pointer-fine:py-2 sm:pointer-fine:text-sm"
           />
         </div>
 
@@ -334,13 +334,13 @@ export default function EditEvent() {
             maxLength={LIMITS.description}
             value={description}
             onChange={(e) => setDescription(e.target.value)}
-            className="w-full resize-none rounded-lg border border-gray-300 px-3 py-2.5 text-base outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100 sm:pointer-fine:py-2 sm:pointer-fine:text-sm"
+            className="w-full resize-none rounded-lg border border-gray-300 px-3 py-2.5 text-base outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-500/20 sm:pointer-fine:py-2 sm:pointer-fine:text-sm"
           />
         </div>
 
         <div>
           <span className="mb-1 block text-sm font-medium text-gray-700">Cover Image</span>
-          <label className="flex cursor-pointer items-center gap-3 rounded-lg border border-dashed border-gray-300 p-3 transition hover:border-indigo-400 hover:bg-indigo-50/50 sm:p-4">
+          <label className="flex cursor-pointer items-center gap-3 rounded-lg border border-dashed border-gray-300 p-3 transition hover:border-brand-400 hover:bg-brand-50/50 sm:p-4">
             {coverPreview || signedCover ? (
               <img
                 src={coverPreview ?? signedCover ?? ''}
@@ -357,6 +357,7 @@ export default function EditEvent() {
             </span>
             <input type="file" accept="image/*" onChange={handleCoverChange} className="hidden" />
           </label>
+          <p className="mt-1 text-xs text-gray-500">Max 1 MB.</p>
         </div>
 
         {error && (
@@ -374,7 +375,7 @@ export default function EditEvent() {
           <button
             type="submit"
             disabled={submitting}
-            className="rounded-lg bg-indigo-600 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-indigo-700 disabled:opacity-50 sm:pointer-fine:py-2"
+            className="rounded-lg bg-brand-600 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-brand-700 disabled:opacity-50 sm:pointer-fine:py-2"
           >
             {submitting ? 'Saving…' : 'Save Changes'}
           </button>

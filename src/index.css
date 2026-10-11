@@ -1,6 +1,110 @@
 @import 'tailwindcss';
 
+/*
+ * Design system
+ * -------------
+ * CSS-first theme (Tailwind v4). Everything the app draws comes from these
+ * tokens rather than ad-hoc `indigo-600` / `gray-*` choices spread across
+ * components, so a page cannot quietly drift away from the rest.
+ *
+ * The accent is a deep viridian teal (`brand`), chosen to read as calm and
+ * academic rather than a stock Bootstrap blue. White text on brand-600 clears
+ * AA at 5.9:1, and brand-700 is the ink shade for put-it-on-a-tint labels.
+ *
+ * The neutral scale deliberately *replaces* Tailwind's default gray, so every
+ * existing `bg-gray-50` / `text-gray-500` in the codebase picks up the new
+ * cool, low-chroma grey without each file having to be rewritten.
+ */
 @theme {
   --font-sans:
-    system-ui, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+    ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto,
+    'Helvetica Neue', Arial, sans-serif;
+  --font-mono:
+    ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, monospace;
+
+  /* Brand — primary action accent. */
+  --color-brand-50: #eef7f5;
+  --color-brand-100: #d5ece7;
+  --color-brand-200: #add9d1;
+  --color-brand-300: #7dbeb4;
+  --color-brand-400: #4d9d94;
+  --color-brand-500: #2f8078;
+  --color-brand-600: #237066;
+  --color-brand-700: #1e5a53;
+  --color-brand-800: #1b4944;
+  --color-brand-900: #193d39;
+  --color-brand-950: #0b2321;
+
+  /* Neutral — cool, low-chroma. Overrides Tailwind's default gray. */
+  --color-gray-50: #f7f9f9;
+  --color-gray-100: #eef1f2;
+  --color-gray-200: #e0e5e6;
+  --color-gray-300: #c9d1d3;
+  --color-gray-400: #93a0a3;
+  --color-gray-500: #6b787c;
+  --color-gray-600: #4f5b5f;
+  --color-gray-700: #3a4448;
+  --color-gray-800: #272f32;
+  --color-gray-900: #161d1f;
+  --color-gray-950: #0c1113;
+
+  /* Semantic status colours. The five derived statuses and every banner read
+   * from these, so "amber means waiting" is set in one place. */
+  --color-success-50: #ecfdf3;
+  --color-success-100: #d1fadf;
+  --color-success-500: #17a94f;
+  --color-success-600: #0f8a40;
+  --color-success-700: #0b6b33;
+
+  --color-warning-50: #fff8e6;
+  --color-warning-100: #ffefc2;
+  --color-warning-500: #e0900a;
+  --color-warning-600: #b87400;
+  --color-warning-700: #8a5600;
+
+  --color-danger-50: #fef2f2;
+  --color-danger-100: #fde3e3;
+  --color-danger-500: #e5484d;
+  --color-danger-600: #cf3b40;
+  --color-danger-700: #a52025;
+
+  --color-info-50: #eef4ff;
+  --color-info-100: #dbe7ff;
+  --color-info-500: #3b7dd8;
+  --color-info-600: #2f66b5;
+  --color-info-700: #274f8a;
+
+  /*
+   * Surfaces. A hairline border plus a two-stop shadow reads as a lifted
+   * sheet without the flat, template look a single `shadow-sm` gives.
+   */
+  --shadow-card:
+    0 1px 2px -1px rgb(12 17 19 / 0.1), 0 1px 3px 0 rgb(12 17 19 / 0.05);
+  --shadow-card-hover:
+    0 12px 28px -14px rgb(12 17 19 / 0.28), 0 3px 8px -3px rgb(12 17 19 / 0.1);
+  --shadow-pop:
+    0 18px 40px -18px rgb(12 17 19 / 0.3), 0 4px 10px -4px rgb(12 17 19 / 0.12);
+
+  /* Motion — short, eased, never bouncy. */
+  --ease-out-soft: cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+@layer base {
+  body {
+    background-color: var(--color-gray-50);
+    color: var(--color-gray-900);
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+  }
+
+  /* A single, consistent keyboard focus treatment. Inputs keep their own ring
+   * (see the forms); this catches links, buttons and anything else. */
+  :where(a, button, [role='button'], summary):focus-visible {
+    outline: 2px solid var(--color-brand-500);
+    outline-offset: 2px;
+  }
+
+  ::selection {
+    background-color: var(--color-brand-200);
+  }
 }

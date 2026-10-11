@@ -5,6 +5,7 @@ import EventStatus from './EventStatus'
 import NoImage from './NoImage'
 import { useSignedUrl } from '../supabase/storage'
 import { useAuth } from '../context/AuthContext'
+import { formatTime } from '../lib/eventStatus'
 
 interface EventCardProps {
   event: CollegeEvent
@@ -37,7 +38,7 @@ export default function EventCard({
   return (
     <Link
       to={`/events/${event.id}`}
-      className="group flex flex-col overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm transition hover:shadow-md"
+      className="group flex flex-col overflow-hidden rounded-xl border border-gray-200 bg-white shadow-card transition duration-200 ease-out-soft hover:-translate-y-0.5 hover:border-brand-300 hover:shadow-card-hover"
     >
       {/* Always this height, cover or not: a grid of cards that alternates
           between with-a-photo and without reads as broken, and it made every
@@ -47,15 +48,20 @@ export default function EventCard({
           <img
             src={coverUrl}
             alt={event.title}
-            className="h-full w-full object-cover transition duration-300 group-hover:scale-105"
+            className="h-full w-full object-cover transition duration-500 ease-out-soft group-hover:scale-[1.04]"
           />
         ) : (
-          <NoImage className="h-full w-full" />
+          // A set cover is unreadable to anyone but a manager, so it is not
+          // "missing" for them — the placeholder has to say so.
+          <NoImage
+            className="h-full w-full"
+            label={event.coverImage ? 'Cover visible to managers only' : 'No cover image'}
+          />
         )}
       </div>
-      <div className="flex flex-1 flex-col gap-2 p-4">
+      <div className="flex flex-1 flex-col gap-2.5 p-4">
         <div className="flex items-center justify-between gap-2">
-          <span className="truncate text-xs font-medium text-indigo-600">
+          <span className="truncate text-[11px] font-semibold uppercase tracking-[0.12em] text-brand-700">
             {department?.name ?? 'Unknown'}
           </span>
           <EventStatus
@@ -66,27 +72,29 @@ export default function EventCard({
         {/* break-words rather than truncate: a title is the one thing on a card
             that must stay readable, and a single long word would otherwise set
             the card's width and push the grid into a horizontal scroll. */}
-        <h3 className="font-semibold break-words text-gray-900">{event.title}</h3>
+        <h3 className="font-semibold tracking-tight break-words text-gray-900">
+          {event.title}
+        </h3>
         {/* shrink-0 on every icon so a long venue takes the width instead of
             squashing the glyph beside it. */}
-        <div className="mt-auto space-y-1 text-sm text-gray-500">
+        <div className="mt-auto space-y-1.5 text-sm text-gray-500">
           <p className="flex items-center gap-1.5">
-            <CalendarDays className="h-3.5 w-3.5 shrink-0" />
+            <CalendarDays className="h-3.5 w-3.5 shrink-0 text-gray-400" />
             {dateLabel}
           </p>
           <p className="flex items-center gap-1.5">
-            <Clock className="h-3.5 w-3.5 shrink-0" />
-            {event.startTime} – {event.endTime}
+            <Clock className="h-3.5 w-3.5 shrink-0 text-gray-400" />
+            {formatTime(event.startTime)} – {formatTime(event.endTime)}
           </p>
           <p className="flex items-start gap-1.5">
-            <MapPin className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+            <MapPin className="mt-0.5 h-3.5 w-3.5 shrink-0 text-gray-400" />
             <span className="min-w-0 break-words">{event.venue}</span>
           </p>
           {/* Always shown, not only for events the viewer filed. The name is
               copied onto the event at creation, so it needs no lookup and works
               for a colleague in another department. */}
-          <p className="flex items-start gap-1.5 pt-1 text-xs text-gray-400">
-            <UserCheck className="mt-0.5 h-3.5 w-3.5 shrink-0" /> Created by{' '}
+          <p className="flex items-start gap-1.5 border-t border-gray-100 pt-2 text-xs text-gray-500">
+            <UserCheck className="mt-0.5 h-3.5 w-3.5 shrink-0 text-gray-400" /> Created by{' '}
             <span className="min-w-0 break-words">
               {event.coordinatorName ?? 'a teacher'}
             </span>

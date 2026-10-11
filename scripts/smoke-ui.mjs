@@ -91,7 +91,7 @@ const { targetId } = await send('Target.createTarget', { url: 'about:blank' })
 const { sessionId } = await send('Target.attachToTarget', { targetId, flatten: true })
 await send('Page.enable', {}, sessionId)
 await send('Runtime.enable', {}, sessionId)
-// A desktop viewport, so the sidebar is the nav under test. Below lg the app
+// A desktop viewport, so the navbar is the nav under test. Below lg the app
 // renders BottomNav instead — the two read the same NAV_ITEMS, and
 // verify:lifecycle asserts they are still the same list.
 await send(
@@ -137,7 +137,7 @@ const setInput = (id, value) => evaluate(`(() => {
   return true;
 })()`)
 
-// Event cards only: inside <main>, and not the sidebar's "Create Event" link.
+// Event cards only: inside <main>, and not the navbar's "Create Event" link.
 const CARD_SEL = 'main a[href^="/events/"]:not([href$="/create"])'
 
 async function waitForCards(timeoutMs = 20000) {
@@ -314,13 +314,13 @@ try {
       console.log(`INFO  ${detailSigned} signed media URL(s); sections: ${headings.join(' | ')}`)
     } else {
       check('a non-manager is never sent a signed media URL', detailSigned === 0, `${detailSigned} signed`)
-      check('gallery is hidden from a non-manager', !headings.includes('Gallery'), headings.join(' | '))
+      check('a non-manager was never offered photo uploads', !detail.includes('Add photos'), '')
       check('report section is hidden from a non-manager', !headings.includes('Report'), headings.join(' | '))
       if (hasEdit) {
         check(
-          'uploader is told media is managers-only',
-          detail.includes('visible to managers only'),
-          'note missing',
+          'a non-manager teacher is not offered a report upload',
+          !detail.includes('Upload report') && !detail.includes('Replace report'),
+          'report upload shown',
         )
       }
     }

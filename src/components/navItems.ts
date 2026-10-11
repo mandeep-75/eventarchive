@@ -7,10 +7,10 @@ export interface NavItem {
   managerOnly?: boolean
 }
 
-// Shared by the sidebar (lg and up) and the bottom tab bar (below it) so the two
-// cannot disagree about what the app contains. It used to live inside Sidebar,
-// which left the small-screen navigation free to be a second, shorter list —
-// which is how a phone ends up with no route to /setup at all.
+// Shared by the navbar (lg and up) and the bottom tab bar (below it) so the two
+// cannot disagree about what the app contains. It used to live inside a
+// sidebar, which left the small-screen navigation free to be a second, shorter
+// list — which is how a phone ends up with no route to /setup at all.
 //
 // Creating an event is an action, not a destination — it lives on the Events
 // page. The calendar is a view of Events, not a separate section. There is no

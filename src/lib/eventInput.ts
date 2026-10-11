@@ -147,15 +147,31 @@ export function validateEvent(
 }
 
 /**
+ * Cover uploads are capped at 1 MB. Kept here so the two forms share the number
+ * and the uploader in storage.ts mirrors it.
+ */
+export const COVER_MAX_BYTES = 1 * 1024 * 1024
+
+/**
  * `accept="image/*"` is only a hint — a file can be renamed to `.png` on the way
  * in, and the browser will pass it straight through. Checked before the upload
  * so the refusal names the file rather than arriving as a storage error.
  */
-export function checkImageFile(file: File): { ok: true } | { ok: false; error: string } {
+export function checkImageFile(
+  file: File,
+  maxBytes = COVER_MAX_BYTES,
+): { ok: true } | { ok: false; error: string } {
   if (!file.type.startsWith('image/')) {
     return {
       ok: false,
       error: `"${file.name}" is not an image. Choose a JPG, PNG or WebP file.`,
+    }
+  }
+  if (file.size > maxBytes) {
+    const mb = (maxBytes / 1024 / 1024).toFixed(0)
+    return {
+      ok: false,
+      error: `Cover image must be under ${mb} MB.`,
     }
   }
   return { ok: true }

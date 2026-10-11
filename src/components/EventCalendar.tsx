@@ -3,7 +3,8 @@ import { Link } from 'react-router-dom'
 import { ChevronLeft, ChevronRight } from 'lucide-react'
 import type { ListedEvent } from '../hooks/useEvents'
 import { useDepartments } from '../hooks/useDepartments'
-import EventStatus from './EventStatus'
+import { formatTime } from '../lib/eventStatus'
+import EventStatus, { DOT } from './EventStatus'
 
 const WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
 function toDateKey(date: Date) {
@@ -98,7 +99,7 @@ export default function EventCalendar({ items }: { items: ListedEvent[] }) {
                 aria-pressed={isSelected}
                 className={`relative flex min-h-[3rem] flex-col items-center justify-center gap-0.5 rounded-lg py-1.5 transition sm:min-h-[3.5rem] sm:py-2 ${
                   isSelected
-                    ? 'bg-indigo-50 ring-2 ring-indigo-600'
+                    ? 'bg-brand-50 ring-2 ring-brand-600'
                     : isToday
                       ? 'bg-gray-100'
                       : 'hover:bg-gray-50'
@@ -107,7 +108,7 @@ export default function EventCalendar({ items }: { items: ListedEvent[] }) {
                 <span
                   className={`text-sm font-medium ${
                     isToday
-                      ? 'flex h-6 w-6 items-center justify-center rounded-full bg-indigo-600 text-white'
+                      ? 'flex h-6 w-6 items-center justify-center rounded-full bg-brand-600 text-white'
                       : 'text-gray-800'
                   }`}
                 >
@@ -118,17 +119,7 @@ export default function EventCalendar({ items }: { items: ListedEvent[] }) {
                     {dayEvents.slice(0, 3).map((item) => (
                       <span
                         key={item.event.id}
-                        className={`h-1.5 w-1.5 rounded-full ${
-                          item.status === 'ongoing'
-                            ? 'bg-green-500'
-                            : item.status === 'upcoming'
-                              ? 'bg-blue-500'
-                              : item.status === 'awaiting_report'
-                                ? 'bg-amber-500'
-                                : item.status === 'cancelled'
-                                  ? 'bg-red-400'
-                                  : 'bg-gray-300'
-                        }`}
+                        className={`h-1.5 w-1.5 rounded-full ${DOT[item.status]}`}
                       />
                     ))}
                   </span>
@@ -160,14 +151,14 @@ export default function EventCalendar({ items }: { items: ListedEvent[] }) {
                 className="flex items-center justify-between gap-4 rounded-xl border border-gray-200 bg-white p-4 shadow-sm transition hover:shadow-md"
               >
                 <div className="min-w-0">
-                  <p className="text-xs font-medium text-indigo-600">
+                  <p className="text-xs font-medium text-brand-600">
                     {deptMap.get(item.event.departmentId)?.name ?? 'Unknown'}
                     {' · '}
                     {item.event.coordinatorName ?? 'a teacher'}
                   </p>
                   <h3 className="truncate font-semibold text-gray-900">{item.event.title}</h3>
                   <p className="text-sm text-gray-500">
-                    {item.event.startTime} – {item.event.endTime} · {item.event.venue}
+                    {formatTime(item.event.startTime)} – {formatTime(item.event.endTime)} · {item.event.venue}
                   </p>
                 </div>
                 <EventStatus

@@ -21,11 +21,11 @@ export default function NoImage({
 }) {
   return (
     <div
-      className={`relative flex items-center justify-center overflow-hidden bg-slate-50 ${className}`}
+      className={`relative flex items-center justify-center overflow-hidden bg-gray-100 ${className}`}
     >
       <svg
         aria-hidden="true"
-        className="absolute inset-0 h-full w-full text-slate-200"
+        className="absolute inset-0 h-full w-full text-gray-200"
         preserveAspectRatio="none"
         viewBox="0 0 8 8"
       >
@@ -33,8 +33,8 @@ export default function NoImage({
         <path d="M-2 10 L10 -2 M0 12 L12 0" stroke="currentColor" strokeWidth="0.4" />
       </svg>
       <div className="relative flex flex-col items-center gap-1.5 px-3 text-center">
-        <ImageOff className="h-6 w-6 text-slate-400" />
-        {label && <span className="text-xs font-medium text-slate-500">{label}</span>}
+        <ImageOff className="h-6 w-6 text-gray-400" />
+        {label && <span className="text-xs font-medium text-gray-500">{label}</span>}
       </div>
     </div>
   )

@@ -18,8 +18,9 @@ type Unsubscribe = () => void
  * `supabase.channel(topic)` returns the *existing* channel when that topic is
  * already in use, so two components watching the same table would share one
  * channel and the second `.on()` would run after `.subscribe()`, which the SDK
- * rejects outright. The sidebar and the dashboard both watch departments, so
- * without this the page throws on mount.
+ * rejects outright. Several views watch departments — the navbar's department
+ * subtitle, EventDetails, Events and Setup — so without this the page throws
+ * on mount.
  */
 let channelSeq = 0
 function uniqueTopic(prefix: string) {
@@ -192,7 +193,14 @@ export async function deleteEvent(id: string) {
   if (error) throw new Error(error.message)
 }
 
+// Postgres casts the events.id column to uuid and throws a syntax error on
+// anything else before any RLS runs — a hand-typed `/events/lol` would surface
+// "invalid input syntax for type uuid" instead of a neutral not-found. The id
+// is checked here rather than relying on a `where` clause to absorb it.
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+
 export async function getEvent(id: string) {
+  if (!UUID_RE.test(id)) return null
   const { data, error } = await supabase
     .from('events')
     .select('*')

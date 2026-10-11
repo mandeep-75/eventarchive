@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
-import { CalendarDays, LayoutGrid, ListFilter, PlusCircle, Search } from 'lucide-react'
+import { CalendarDays, List, ListFilter, PlusCircle, Search } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
 import { useEvents, type ListedEvent } from '../hooks/useEvents'
 import { useDepartments } from '../hooks/useDepartments'
@@ -8,13 +8,13 @@ import EventCard from '../components/EventCard'
 import EventCalendar from '../components/EventCalendar'
 import type { EventStatus } from '../types'
 
+// Three filter chips: what is coming, what is done, and everything else
+// (Ongoing, Awaiting report and Cancelled still show on the cards — those
+// statuses are worth knowing per event, just not worth scanning for).
 const STATUS_TABS: Array<{ value: EventStatus | 'all'; label: string }> = [
   { value: 'all', label: 'All' },
   { value: 'upcoming', label: 'Upcoming' },
-  { value: 'ongoing', label: 'Ongoing' },
-  { value: 'awaiting_report', label: 'Awaiting report' },
   { value: 'completed', label: 'Completed' },
-  { value: 'cancelled', label: 'Cancelled' },
 ]
 
 /** The next thing due first. The tie-break keeps same-day events in a stable order. */
@@ -64,7 +64,8 @@ export default function Events() {
       .filter((i) =>
         search
           ? i.event.title.toLowerCase().includes(search.toLowerCase()) ||
-            i.event.venue.toLowerCase().includes(search.toLowerCase())
+            i.event.venue.toLowerCase().includes(search.toLowerCase()) ||
+            (i.event.coordinatorName ?? '').toLowerCase().includes(search.toLowerCase())
           : true,
       )
   }, [items, status, departmentId, search])
@@ -115,15 +116,29 @@ export default function Events() {
   // saves a list that reorders itself in front of you.
   const busy = loading || profileLoading
 
-  const groups = [
-    { title: deptMap.get(myDepartmentId ?? '')?.name ?? 'Your department', items: mine },
-    { title: 'Recently added elsewhere', items: others },
-  ].filter((g) => g.items.length > 0)
+  const groups = useMemo(() => {
+    // A department filter is a flat list of that department's events — the
+    // mine/elsewhere split is about ordering "all events", not about a narrow
+    // filter result, and "Recently added elsewhere" over a single-colour set is
+    // noise.
+    if (departmentId !== 'all') {
+      return [
+        {
+          title: deptMap.get(departmentId)?.name ?? 'Events',
+          items: [...matching].sort(byDate),
+        },
+      ]
+    }
+    return [
+      { title: deptMap.get(myDepartmentId ?? '')?.name ?? 'Your department', items: mine },
+      { title: 'Recently added elsewhere', items: others },
+    ].filter((g) => g.items.length > 0)
+  }, [matching, mine, others, myDepartmentId, deptMap, departmentId])
 
   return (
     <div className="space-y-6">
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-        <h1 className="text-2xl font-bold text-gray-900">Events</h1>
+        <h1 className="text-2xl font-bold tracking-tight text-gray-900">Events</h1>
         {/* Full-width controls below sm. Wrapping fixed-width ones left a ragged
             right edge — a 176px search beside a variable-width select, then the
             view toggle and New Event stranded on a third line. */}
@@ -134,8 +149,9 @@ export default function Events() {
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               placeholder="Search events…"
+              aria-label="Search events"
               // text-base below sm so iOS does not zoom the page on focus.
-              className="w-full rounded-lg border border-gray-300 py-2.5 pl-9 pr-3 text-base outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100 sm:pointer-fine:py-2 sm:pointer-fine:text-sm"
+              className="w-full rounded-lg border border-gray-300 bg-white py-2.5 pl-9 pr-3 text-base text-gray-900 shadow-sm outline-none transition placeholder:text-gray-400 focus:border-brand-500 focus:ring-2 focus:ring-brand-500/20 sm:pointer-fine:py-2 sm:pointer-fine:text-sm"
             />
           </div>
           <div className="relative w-full sm:w-auto">
@@ -144,7 +160,7 @@ export default function Events() {
               value={departmentId}
               onChange={(e) => setParam('department', e.target.value)}
               aria-label="Filter by department"
-              className="w-full appearance-none rounded-lg border border-gray-300 px-2 py-2.5 pl-9 pr-8 text-base outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100 sm:w-auto sm:pointer-fine:py-2 sm:pointer-fine:text-sm"
+              className="w-full appearance-none rounded-lg border border-gray-300 bg-white px-2 py-2.5 pl-9 pr-8 text-base text-gray-900 shadow-sm outline-none transition focus:border-brand-500 focus:ring-2 focus:ring-brand-500/20 sm:w-auto sm:pointer-fine:py-2 sm:pointer-fine:text-sm"
             >
               <option value="all">All Departments</option>
               {departments.map((d) => (
@@ -155,10 +171,10 @@ export default function Events() {
             </select>
           </div>
           {/* List and calendar are two views of the same filtered set. */}
-          <div className="flex rounded-lg border border-gray-300 p-0.5">
+          <div className="flex rounded-lg border border-gray-200 bg-white p-0.5 shadow-sm">
             {(
               [
-                { value: 'list', label: 'List', icon: LayoutGrid },
+                { value: 'list', label: 'List', icon: List },
                 { value: 'calendar', label: 'Calendar', icon: CalendarDays },
               ] as const
             ).map((option) => (
@@ -169,8 +185,8 @@ export default function Events() {
                 title={`${option.label} view`}
                 className={`inline-flex flex-1 items-center justify-center gap-1.5 rounded-md px-2.5 py-2.5 text-sm font-medium transition sm:flex-none sm:pointer-fine:py-1.5 ${
                   view === option.value
-                    ? 'bg-indigo-600 text-white'
-                    : 'text-gray-600 hover:bg-gray-50'
+                    ? 'bg-brand-600 text-white shadow-sm'
+                    : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900'
                 }`}
               >
                 <option.icon className="h-4 w-4" />
@@ -178,12 +194,17 @@ export default function Events() {
               </button>
             ))}
           </div>
-          <Link
-            to="/events/create"
-            className="inline-flex items-center justify-center gap-1.5 rounded-lg bg-indigo-600 px-3 py-2.5 text-sm font-semibold text-white transition hover:bg-indigo-700 sm:pointer-fine:py-2"
-          >
-            <PlusCircle className="h-4 w-4" /> New Event
-          </Link>
+          {/* Filing is a department act (the insert policy pins department_id to
+              the caller's), and managers have no department — so only someone
+              who can actually file sees the button. */}
+          {myDepartmentId && (
+            <Link
+              to="/events/create"
+              className="inline-flex items-center justify-center gap-1.5 rounded-lg bg-brand-600 px-3 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-brand-700 active:bg-brand-800 sm:pointer-fine:py-2"
+            >
+              <PlusCircle className="h-4 w-4" /> New Event
+            </Link>
+          )}
         </div>
       </div>
 
@@ -195,8 +216,8 @@ export default function Events() {
             aria-pressed={status === tab.value}
             className={`rounded-full px-3 py-2.5 text-sm font-medium transition sm:pointer-fine:py-1.5 ${
               status === tab.value
-                ? 'bg-indigo-600 text-white'
-                : 'bg-white text-gray-600 ring-1 ring-gray-200 hover:bg-gray-50'
+                ? 'bg-brand-600 text-white shadow-sm'
+                : 'bg-white text-gray-600 ring-1 ring-gray-200 hover:bg-gray-100 hover:text-gray-900'
             }`}
           >
             {tab.label}
@@ -209,7 +230,7 @@ export default function Events() {
       {error && !busy && (
         <p
           role="alert"
-          className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700"
+          className="rounded-lg bg-danger-50 px-3 py-2 text-sm text-danger-700 ring-1 ring-inset ring-danger-600/10"
         >
           {error}
         </p>
@@ -226,13 +247,13 @@ export default function Events() {
       ) : busy ? (
         <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
           {[0, 1, 2, 3, 4, 5].map((i) => (
-            <div key={i} className="h-64 animate-pulse rounded-xl bg-gray-200" />
+            <div key={i} className="h-64 animate-pulse rounded-xl bg-gray-200/80" />
           ))}
         </div>
       ) : groups.length === 0 ? (
         // An empty list because the fetch failed is already explained above;
         // blaming the reader's filters for that would send them hunting.
-        <div className="rounded-xl border border-dashed border-gray-300 p-12 text-center text-sm text-gray-400">
+        <div className="rounded-2xl border border-dashed border-gray-300 bg-white/60 p-12 text-center text-sm text-gray-500">
           {error ? 'The events could not be loaded.' : 'No events match your filters.'}
         </div>
       ) : (
@@ -242,9 +263,9 @@ export default function Events() {
         <div className="space-y-6">
           {groups.map((group) => (
             <section key={group.title} className="space-y-3">
-              <h2 className="flex items-center gap-2 font-semibold text-gray-900">
+              <h2 className="flex items-center gap-2 text-[15px] font-semibold text-gray-900">
                 {group.title}
-                <span className="rounded-full bg-gray-100 px-2 py-0.5 text-xs font-normal text-gray-600">
+                <span className="rounded-full bg-brand-50 px-2 py-0.5 text-xs font-semibold text-brand-700">
                   {group.items.length}
                 </span>
               </h2>
