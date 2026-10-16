@@ -19,15 +19,6 @@ export default function Layout() {
         <Outlet />
       </main>
       <BottomNav />
-      {/* pointer-events-none so it can never swallow a click meant for the
-          content underneath. Only rendered inside the app shell, so it does
-          not appear on the login screen.
-          Hidden below lg: it is absolutely positioned over the bottom-right
-          corner, which is exactly where the tab bar's rightmost item is, and a
-          credit is not worth making a nav button harder to hit. */}
-      <p className="pointer-events-none fixed bottom-3 right-4 z-10 hidden select-none text-xs text-gray-400 lg:block">
-        made by <span className="font-medium text-gray-500">mandeep</span>
-      </p>
     </div>
   )
 }

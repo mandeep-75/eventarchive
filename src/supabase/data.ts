@@ -193,6 +193,21 @@ export async function deleteEvent(id: string) {
   if (error) throw new Error(error.message)
 }
 
+/**
+ * Clears the report columns on an event, and nothing else.
+ *
+ * A manager may remove a report filed under any department, but deleting the
+ * object is only half of it: `report` on the row is what makes the event read as
+ * completed. `events_update` is department-scoped, so a manager outside the
+ * department cannot write the row — and widening it would hand out the Edit
+ * button and every other column with it. This calls the manager-only definer
+ * function in schema.sql instead.
+ */
+export async function clearEventReport(id: string) {
+  const { error } = await supabase.rpc('clear_event_report', { p_event_id: id })
+  if (error) throw new Error(error.message)
+}
+
 // Postgres casts the events.id column to uuid and throws a syntax error on
 // anything else before any RLS runs — a hand-typed `/events/lol` would surface
 // "invalid input syntax for type uuid" instead of a neutral not-found. The id

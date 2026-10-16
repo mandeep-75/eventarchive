@@ -69,9 +69,11 @@ export function toEvent(row: Row): CollegeEvent {
     cancelledReason: row.cancelled_reason ?? null,
     cancelledAt: isoOrNull(row.cancelled_at),
     guestSpeaker: row.guest_speaker ?? null,
+    collaboration: row.collaboration ?? null,
     participantCount: row.participant_count ?? null,
     report: row.report ?? null,
     reportName: row.report_name ?? null,
+    reportFiled: row.report_filed === true,
     createdAt: new Date(row.created_at),
     updatedAt: new Date(row.updated_at),
   }
@@ -95,12 +97,17 @@ export function fromEvent(patch: Partial<CollegeEvent>): Row {
   put('cancelled_reason', 'cancelledReason')
   put('cancelled_at', 'cancelledAt')
   put('guest_speaker', 'guestSpeaker')
+  put('collaboration', 'collaboration')
   put('participant_count', 'participantCount')
   put('report', 'report')
   put('report_name', 'reportName')
   // coordinator_name is deliberately absent: the database stamps it from the
   // caller's own profile on insert, and a client that could send it would be
   // crediting an event to whoever it liked.
+  //
+  // report_filed is absent for the same reason: the database sets it from the
+  // report column in a trigger, and a client able to send it could mark an event
+  // completed without a report ever having been filed.
   return out
 }
 

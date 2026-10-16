@@ -2,8 +2,23 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>College Event Hub</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <title>KCG Event Hub</title>
+    <meta
+      name="description"
+      content="Browse and manage your department's event archive."
+    />
+    <!-- Install and address-bar colours. Matches the brand token in index.css. -->
+    <meta name="theme-color" content="#E87518" />
+    <link rel="manifest" href="/manifest.webmanifest" />
+    <link rel="icon" type="image/png" href="/icons/favicon.png" />
+    <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png" />
+    <!-- Lets iOS add it to the home screen as a full-screen app rather than a
+         bookmark, since iOS has never read the manifest's `display`. -->
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+    <meta name="apple-mobile-web-app-title" content="KCG Hub" />
+    <link rel="mask-icon" href="/icons/apple-touch-icon.png" color="#E87518" />
   </head>
   <body>
     <div id="root"></div>

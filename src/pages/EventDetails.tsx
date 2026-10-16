@@ -5,8 +5,10 @@ import {
   Ban,
   CalendarDays,
   Clock,
+  Download,
   ExternalLink,
   FileText,
+  Handshake,
   MapPin,
   Pencil,
   RotateCcw,
@@ -16,8 +18,8 @@ import {
   UserRound,
   Users,
 } from 'lucide-react'
-import { getEvent, deleteEvent, updateEvent } from '../supabase/data'
-import { uploadReport, useOnDemandSigner, useSignedUrl } from '../supabase/storage'
+import { clearEventReport, getEvent, deleteEvent, updateEvent } from '../supabase/data'
+import { deleteFile, signDownloadUrl, uploadReport, useOnDemandSigner, useSignedUrl } from '../supabase/storage'
 import { useDepartments } from '../hooks/useDepartments'
 import { useNow } from '../hooks/useNow'
 import { useAuth } from '../context/AuthContext'
@@ -43,6 +45,11 @@ export default function EventDetails() {
   const [event, setEvent] = useState<CollegeEvent | null>(null)
   const [loading, setLoading] = useState(true)
   const [uploading, setUploading] = useState(false)
+  const [downloading, setDownloading] = useState(false)
+  const [deletingReport, setDeletingReport] = useState(false)
+  // The report's own error slot, kept next to the buttons that raise it rather
+  // than in the page banner above the card.
+  const [reportError, setReportError] = useState('')
   const [notice, setNotice] = useState('')
   // Separate from `notice`, so a success does not have to be edited out before
   // a failure can be shown.
@@ -135,8 +142,10 @@ export default function EventDetails() {
   // closes the event off or it gets called off.
   const hasEnded = eventEnd(current).getTime() <= now.getTime()
   // Once an event is over with nothing filed, uploading the report is the one
-  // thing left to do, so it gets the filled button rather than an outline.
-  const needsReport = hasEnded && !current.report
+  // thing left to do, so it gets the filled button rather than an outline. A
+  // report that was filed and since deleted still counts: the event is done, and
+  // a replacement upload is optional rather than the outstanding task.
+  const needsReport = hasEnded && !current.report && !current.reportFiled
 
   const date = new Date(current.date + 'T00:00:00')
   const dateLabel = date.toLocaleDateString('en-US', {
@@ -206,11 +215,14 @@ export default function EventDetails() {
       // A report means the event actually happened, so any cancellation is
       // dropped: a hand-made one would otherwise keep the page reading
       // "cancelled" right next to a filed report, and a no_report one is worked
-      // out from the missing report in the first place. Nothing else is written
-      // — the status is decided by the date and the report from here on.
+      // out from the missing report in the first place. `reportFiled` is set here
+      // only in local state — a database trigger stamps the column from `report`,
+      // and fromEvent omits it, so the client never sends it — but carrying it in
+      // the patch keeps the status correct on this render, before the refetch.
       await patch({
         report: url,
         reportName: file.name,
+        reportFiled: true,
         cancelledReason: null,
         cancelledAt: null,
       })
@@ -222,6 +234,54 @@ export default function EventDetails() {
     } finally {
       setUploading(false)
       if (reportInputRef.current) reportInputRef.current.value = ''
+    }
+  }
+
+  async function handleDownloadReport() {
+    if (!current.report) return
+    setReportError('')
+    setDownloading(true)
+    try {
+      // Signed for download rather than display, so the browser saves the file
+      // rather than rendering a PDF or an image in a tab.
+      const url = await signDownloadUrl(current.report, current.reportName ?? 'report')
+      if (!url) throw new Error('That file could not be downloaded.')
+      window.open(url, '_blank', 'noopener,noreferrer')
+    } catch (err) {
+      setReportError(err instanceof Error ? err.message : 'That file could not be downloaded.')
+    } finally {
+      setDownloading(false)
+    }
+  }
+
+  async function handleDeleteReport() {
+    if (!id || !current.report) return
+    const name = current.reportName ?? 'the report'
+    // Asked twice on purpose: this removes the file itself, not just the row's
+    // pointer to it, and nothing in the app can bring it back.
+    if (!confirm(`Delete "${name}" from this event?`)) return
+    if (!confirm(`Delete the file "${name}" for good? This cannot be undone.`)) return
+    setError('')
+    setReportError('')
+    setDeletingReport(true)
+    try {
+      // The file goes first. If it cannot be removed the row is left alone, so a
+      // refusal never leaves the archive pointing at a report that is still
+      // there; the pointer is cleared only once the bytes are gone. Clearing it
+      // goes through the manager-only definer function rather than an edit,
+      // because a manager may remove any department's report and must not gain
+      // the run of the rest of the row to do it.
+      //
+      // Only the pointer is cleared. reportFiled stays true, so the event keeps
+      // reading completed: the file going does not un-happen the event.
+      await deleteFile(current.report)
+      await clearEventReport(current.id)
+      setEvent((prev) => (prev ? { ...prev, report: null, reportName: null } : prev))
+      setNotice('Report deleted.')
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not delete the report.')
+    } finally {
+      setDeletingReport(false)
     }
   }
 
@@ -306,11 +366,9 @@ export default function EventDetails() {
 
             {resolved.status === 'awaiting_report' && (
               <p className="rounded-lg bg-warning-50 p-3 text-sm text-warning-700">
-                {isManager && canManage
+                {canManage
                   ? `Event over, no report yet. Upload one within ${REPORT_GRACE_DAYS} days or it is cancelled.`
-                  : canManage
-                    ? 'Event over, no report yet. A manager uploads it.'
-                    : 'No report has been filed for this event yet.'}
+                  : 'No report has been filed for this event yet.'}
               </p>
             )}
           </div>
@@ -331,6 +389,13 @@ export default function EventDetails() {
               value={current.guestSpeaker}
             />
           )}
+          {current.collaboration && (
+            <Info
+              icon={<Handshake className="h-4 w-4" />}
+              label="In Collaboration With"
+              value={current.collaboration}
+            />
+          )}
           {current.participantCount != null && (
             <Info
               icon={<Users className="h-4 w-4" />}
@@ -340,31 +405,59 @@ export default function EventDetails() {
           )}
         </div>
 
-        {/* The report is manager-only: the storage select policy refuses every
-            other role, so both the button that reads it and the button that
-            files it live behind isManager. Nothing here hints at whether a
-            report exists. */}
+        {/* Reading the report is manager-only: the storage select policy is
+            is_manager(), so the button that signs it sits behind isManager and
+            nothing is signed on load. Filing it is the other half — the upload
+            button lives under canManage below, because the insert policy only
+            asks for the owning department. Deleting is a manager's job in any
+            department, so it is not gated on canManage; the file's policy is
+            is_manager() and the row's pointer is cleared by a manager-only
+            definer function rather than an edit. Nothing here hints at whether
+            a report exists for anyone who cannot read it. */}
         {isManager && current.report && (
           <div className="border-t border-gray-100 p-4 sm:p-6">
             <h2 className="mb-3 text-sm font-semibold text-gray-700">Report</h2>
-            <button
-              type="button"
-              onClick={() => {
-                void media.sign(current.report as string).then((url) => {
-                  if (url) window.open(url, '_blank', 'noopener,noreferrer')
-                })
-              }}
-              disabled={!!media.pending[current.report]}
-              className="inline-flex items-center gap-2 rounded-lg border border-gray-200 bg-gray-50 px-3 py-2.5 text-sm font-medium text-gray-700 transition hover:border-brand-300 hover:bg-brand-50 hover:text-brand-700 disabled:opacity-50 sm:pointer-fine:py-2"
-            >
-              <FileText className="h-4 w-4 shrink-0" />
-              {media.pending[current.report] ? (
-                'Opening…'
-              ) : (
-                <span className="max-w-full truncate">{current.reportName ?? 'Open report'}</span>
-              )}
-            </button>
+            <div className="flex flex-wrap gap-2">
+              <button
+                type="button"
+                onClick={() => {
+                  void media.sign(current.report as string).then((url) => {
+                    if (url) window.open(url, '_blank', 'noopener,noreferrer')
+                  })
+                }}
+                disabled={!!media.pending[current.report]}
+                className="inline-flex items-center gap-2 rounded-lg border border-gray-200 bg-gray-50 px-3 py-2.5 text-sm font-medium text-gray-700 transition hover:border-brand-300 hover:bg-brand-50 hover:text-brand-700 disabled:opacity-50 sm:pointer-fine:py-2"
+              >
+                <FileText className="h-4 w-4 shrink-0" />
+                {media.pending[current.report] ? (
+                  'Opening…'
+                ) : (
+                  <span className="max-w-full truncate">{current.reportName ?? 'Open report'}</span>
+                )}
+              </button>
+
+              <button
+                type="button"
+                onClick={handleDownloadReport}
+                disabled={downloading}
+                className="inline-flex items-center gap-2 rounded-lg border border-gray-200 bg-gray-50 px-3 py-2.5 text-sm font-medium text-gray-700 transition hover:border-brand-300 hover:bg-brand-50 hover:text-brand-700 disabled:opacity-50 sm:pointer-fine:py-2"
+              >
+                <Download className="h-4 w-4 shrink-0" />
+                {downloading ? 'Preparing…' : 'Download'}
+              </button>
+
+              <button
+                type="button"
+                onClick={handleDeleteReport}
+                disabled={deletingReport}
+                className="inline-flex items-center gap-2 rounded-lg border border-red-200 bg-white px-3 py-2.5 text-sm font-medium text-red-600 transition hover:bg-red-50 disabled:opacity-50 sm:pointer-fine:py-2"
+              >
+                <Trash2 className="h-4 w-4 shrink-0" />
+                {deletingReport ? 'Deleting…' : 'Delete file'}
+              </button>
+            </div>
             {media.error && <p className="mt-2 text-sm text-red-600">{media.error}</p>}
+            {reportError && <p className="mt-2 text-sm text-red-600">{reportError}</p>}
           </div>
         )}
 
@@ -380,20 +473,18 @@ export default function EventDetails() {
                 <Pencil className="h-4 w-4" /> Edit
               </Link>
 
-              {isManager && (
-                <button
-                  onClick={() => reportInputRef.current?.click()}
-                  disabled={uploading}
-                  className={`inline-flex items-center gap-1.5 rounded-lg border px-3 py-2.5 text-sm font-semibold transition disabled:opacity-50 ${
-                    needsReport
-                      ? 'border-brand-600 bg-brand-600 text-white hover:bg-brand-700'
-                      : 'border-brand-200 bg-white text-brand-600 hover:bg-brand-50'
-                  }`}
-                >
-                  <Upload className="h-4 w-4" />
-                  {current.report ? 'Replace report' : 'Upload report'}
-                </button>
-              )}
+              <button
+                onClick={() => reportInputRef.current?.click()}
+                disabled={uploading}
+                className={`inline-flex items-center gap-1.5 rounded-lg border px-3 py-2.5 text-sm font-semibold transition disabled:opacity-50 ${
+                  needsReport
+                    ? 'border-brand-600 bg-brand-600 text-white hover:bg-brand-700'
+                    : 'border-brand-200 bg-white text-brand-600 hover:bg-brand-50'
+                }`}
+              >
+                <Upload className="h-4 w-4" />
+                {current.report ? 'Replace report' : 'Upload report'}
+              </button>
 
               <a
                 href={REPORT_MAKER_URL}

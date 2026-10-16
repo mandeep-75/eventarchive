@@ -159,13 +159,29 @@ check('a stored no_report on a future event does not stick',
 
 // --- uploading a report reopens a cancelled event ----------
 // A report means the event happened, so a hand cancellation is dropped and the
-// event is judged on its date. Without the !report guard in resolveStatus, a
+// event is judged on its date. Without the !filed guard in resolveStatus, a
 // report landing on a cancelled event would be read back as a hand cancellation
 // and the event could never be closed off.
 const afterUpload = { ...manual, report: 'R.pdf' }
 check('report on hand-cancelled event -> completed', resolveStatus(afterUpload, now).status, 'completed')
 check('report on hand-cancelled event -> not manual', resolveStatus(afterUpload, now).reason, null)
 check('report on hand-cancelled event -> completed', resolveStatus(afterUpload, now).status, 'completed')
+
+// --- deleting the file does not un-complete the event ----------
+// `report` is only the pointer to the file, so deleting the object clears it.
+// report_filed is the sticky record that a report existed, and these are the
+// whole reason the column is there: the file going must not drop a finished
+// event back to awaiting_report.
+check('a report filed and since deleted still reads completed',
+  resolveStatus({ ...pastWithReport, report: null, reportFiled: true }, now).status, 'completed')
+check('…even once the grace period has passed',
+  resolveStatus({ ...staleWithReport, report: null, reportFiled: true }, now).status, 'completed')
+check('a filed report on a hand-cancelled event survives the file being deleted',
+  resolveStatus({ ...manual, report: null, reportFiled: true }, now).status, 'completed')
+// The other direction: report_filed is only ever set by the database from the
+// report column, so on its own it is not a way to mark an event done.
+check('reportFiled with no report and no filing is not completed',
+  resolveStatus(ev({ date: dateOffset(-1) }), now).status, 'awaiting_report')
 
 // The whole point of the rule: no report means never completed, however long ago
 // it ended. Anything else would call an event done that nobody has written up.
@@ -240,8 +256,8 @@ check('app: the event type has no status field',
   /status: EventStatus/.test(readFileSync(new URL('../src/types/index.ts', import.meta.url), 'utf8')
     .split('export interface CollegeEvent')[1] ?? ''), false)
 check('app: no status write-back from the list', /updateEvent|planStatusSync/.test(eventsHookSrc), false)
-check('app: the rule reads only date, times and report',
-  /export type StatusInput = Pick<[\s\S]*?'date' \| 'startTime' \| 'endTime' \| 'report'/.test(statusLib), true)
+check('app: the rule reads only date, times, report and whether one was filed',
+  /export type StatusInput = Pick<[\s\S]*?'date' \| 'startTime' \| 'endTime' \| 'report' \| 'reportFiled'/.test(statusLib), true)
 
 // awaiting_report is a status, not a flag. It used to be a `pendingReport`
 // boolean threaded alongside `completed`, which is two things describing one
@@ -503,12 +519,69 @@ check('app: the report is not signed on load',
   /useSignedUrl\(event\?\.report\)/.test(detailsSrc), false)
 check('app: the report is not drawn for a non-manager',
   /isManager && current\.report/.test(detailsSrc), true)
-// The report is manager-only end to end: reading it and filing it both live in
-// the isManager branch. A department teacher who can manage the event still gets
-// Edit and the report maker, but not the upload.
+// Reading and filing the report are different rules. Reading stays behind
+// isManager — the storage select policy is is_manager(), so the section above
+// is not drawn and nothing is signed on load. Filing is a department action:
+// event_media_insert only asks for the owning department, so the upload button
+// sits under canManage alone and must not be gated on isManager as well.
 const actionBarSrc = detailsSrc.slice(detailsSrc.indexOf('{canManage ? ('))
-check('app: report uploads are managers only',
-  /isManager && \(/.test(actionBarSrc) && /Upload report/.test(actionBarSrc), true)
+check('app: report uploads are a department action, not a manager one',
+  /Upload report/.test(actionBarSrc) && !/isManager/.test(actionBarSrc), true)
+// Reading, downloading and deleting are manager actions, and deleting is the one
+// media write that is NOT scoped to the owning department: a manager curates the
+// archive, and a report filed against the wrong event should not need that
+// department's manager. The object goes through the storage delete policy, which
+// is is_manager(); the row's pointer has to be cleared too, or the page offers a
+// report that is already gone, and that must not be an edit, so it goes through
+// the manager-only definer function rather than widening events_update. It asks
+// twice, because it removes the file itself and nothing brings it back.
+check('app: a report is signed to save, not just to display',
+  /export async function signDownloadUrl\(/.test(storageSrc) &&
+  /createSignedUrl\(path, SIGNED_URL_TTL, \{ download: fileName \}\)/.test(storageSrc), true)
+check('app: any manager may delete a report, not only one in the department',
+  /\{isManager && current\.report && \([\s\S]*?Delete file/.test(detailsSrc) &&
+  !/canManage && \(/.test(detailsSrc), true)
+check('sql: the report delete policy is managers-only, not department-scoped',
+  /create policy event_media_delete on storage\.objects\s+for delete to authenticated\s+using \(bucket_id = 'event-media' and public\.is_manager\(\)\)/.test(sql), true)
+check('sql: clearing the pointer is a manager-only definer function',
+  /create or replace function public\.clear_event_report\(p_event_id uuid\)[\s\S]*?security definer[\s\S]*?if not public\.is_manager\(\) then/.test(sql) &&
+  /revoke execute on function public\.clear_event_report\(uuid\) from public, anon;/.test(sql), true)
+check('app: the row pointer is cleared through that function, not an edit',
+  /clearEventReport\(current\.id\)/.test(detailsSrc) &&
+  /supabase\.rpc\('clear_event_report'/.test(dataSrc), true)
+const deleteReportSrc = detailsSrc.slice(detailsSrc.indexOf('async function handleDeleteReport'))
+check('app: deleting a report is confirmed twice',
+  (deleteReportSrc.match(/confirm\(/g) || []).length >= 2, true)
+
+// ─── Deleting the file does not un-complete the event ──────────────────────
+// `report` is the pointer, so deleting the file has to clear it. report_filed is
+// the sticky record that a report existed, and it is the whole reason deleting a
+// completed event's report does not drop it back to awaiting_report. These guard
+// that it exists, that the database owns it, and that clearing the pointer
+// cannot undo it.
+check('sql: events carry the marker that a report was filed',
+  /report_filed\s+boolean\s+not null default false/.test(sql), true)
+check('sql: an existing project gains the marker',
+  /add column if not exists report_filed boolean not null default false/.test(sql), true)
+check('sql: the marker is set from the report by a trigger',
+  /create trigger events_stamp_report_filed\s*\n\s*before insert or update on public\.events/.test(sql) &&
+  /if tg_op = 'UPDATE' then\s*\n\s*new\.report_filed := old\.report_filed or new\.report is not null/.test(sql) &&
+  /else\s*\n\s*new\.report_filed := new\.report is not null/.test(sql), true)
+check('sql: existing reports are marked filed in the backfill',
+  /update public\.events\s*\n\s*set report_filed = true[\s\S]*?report is not null/.test(sql), true)
+// The narrow function changes the pointer and nothing else. If it also cleared
+// report_filed the event would read awaiting_report again, which is the bug this
+// whole column exists to prevent.
+const clearReportFn = (sql.match(/create or replace function public\.clear_event_report[\s\S]*?\$\$;/) ?? [''])[0]
+check('sql: clearing the pointer leaves the marker alone',
+  /set report = null, report_name = null/.test(clearReportFn) && !/report_filed/.test(clearReportFn), true)
+check('ts: the marker is read back from the row', /reportFiled: row\.report_filed === true/.test(mapperSrc), true)
+// A client able to send report_filed could mark an event completed with no report
+// ever filed. fromEvent is a whitelist, so the omission is what stops it.
+check('ts: the marker is never sent by the client',
+  /put\('report_filed'/.test(mapperSrc), false)
+check('app: a filed report that was deleted is not asked for again',
+  /const needsReport = hasEnded && !current\.report && !current\.reportFiled/.test(detailsSrc), true)
 check('app: a non-manager is never offered photo uploads',
   !/Add photos|uploadEventImage/.test(detailsSrc), true)
 // Postgres needs select visibility for `on conflict do update` as well as for a
@@ -619,6 +692,7 @@ const form = (over = {}) => ({
   venue: 'Seminar Hall',
   description: 'A talk.',
   guestSpeaker: '',
+  collaboration: '',
   ...over,
 })
 const err = (over) => {
@@ -653,6 +727,9 @@ check('input: equal start and end is refused', !!err({ endTime: '10:00' }), true
 
 check('input: a blank speaker means none', val().guestSpeaker, null)
 check('input: a speaker is trimmed', val({ guestSpeaker: ' Dr Rao ' }).guestSpeaker, 'Dr Rao')
+check('input: a blank collaboration means none', val().collaboration, null)
+check('input: a collaboration is trimmed',
+  val({ collaboration: ' Dept of Physics ' }).collaboration, 'Dept of Physics')
 
 // `accept="image/*"` is only a hint; a renamed file gets through.
 check('input: a non-image cover is refused', checkImageFile({ name: 'notes.txt', type: 'text/plain' }).ok, false)

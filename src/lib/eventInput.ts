@@ -17,7 +17,8 @@ export interface EventFormValues {
   venue: string
   description: string
   guestSpeaker: string
-  /** Kept as a string: an empty box is a legitimate "not recorded". */
+  /** Optional: an empty box is a legitimate "not recorded". */
+  collaboration: string
 }
 
 /** Normalised values, ready to send. */
@@ -29,6 +30,7 @@ export interface EventInput {
   venue: string
   description: string
   guestSpeaker: string | null
+  collaboration: string | null
 }
 
 export type Validated<T> = { ok: true; value: T } | { ok: false; error: string }
@@ -41,6 +43,7 @@ export const LIMITS = {
   title: 120,
   venue: 120,
   guestSpeaker: 120,
+  collaboration: 200,
   description: 2000,
 } as const
 
@@ -125,6 +128,13 @@ export function validateEvent(
   const guest = boundedText(values.guestSpeaker, 'Guest / speaker', LIMITS.guestSpeaker)
   if (!guest.ok) return guest
 
+  const collaboration = boundedText(
+    values.collaboration ?? '',
+    'In collaboration with',
+    LIMITS.collaboration,
+  )
+  if (!collaboration.ok) return collaboration
+
   const description = boundedText(
     values.description,
     'Description',
@@ -142,6 +152,7 @@ export function validateEvent(
       venue: venue.value,
       description: description.value,
       guestSpeaker: guest.value === '' ? null : guest.value,
+      collaboration: collaboration.value === '' ? null : collaboration.value,
     },
   }
 }

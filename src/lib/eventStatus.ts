@@ -92,7 +92,7 @@ const DEFAULT: ResolvedStatus = {
 /** Everything the rule depends on — a full event, or just this slice of one. */
 export type StatusInput = Pick<
   CollegeEvent,
-  'date' | 'startTime' | 'endTime' | 'report'
+  'date' | 'startTime' | 'endTime' | 'report' | 'reportFiled'
 > &
   Partial<Pick<CollegeEvent, 'cancelledReason'>>
 
@@ -101,21 +101,28 @@ export type StatusInput = Pick<
  *
  *   before start              → upcoming
  *   start … end               → ongoing
- *   ended, report uploaded    → completed
+ *   ended, report filed       → completed
  *   ended, no report, < 10d   → awaiting_report
  *   ended, no report, ≥ 10d   → cancelled (no_report)
  *
- * An event is only ever "completed" once a report has been uploaded for it.
- * Between the end of the event and the deadline it is `awaiting_report`, which
- * is a state of its own rather than a flavour of completed: calling an event
- * done before anyone has written up what happened is the thing this rule exists
- * to prevent, and a boolean bolted onto "completed" is exactly the kind of
- * two-sources-of-truth that let the old stored status drift.
+ * An event is only ever "completed" once a report has been filed for it. Between
+ * the end of the event and the deadline it is `awaiting_report`, which is a state
+ * of its own rather than a flavour of completed: calling an event done before
+ * anyone has written up what happened is the thing this rule exists to prevent,
+ * and a boolean bolted onto "completed" is exactly the kind of two-sources-of-
+ * truth that let the old stored status drift.
  *
- * Nothing is stored and nothing is written back. The database holds the date and
- * the times; this compares them to the clock each time an event is shown. There
- * used to be a status column kept in step by a browser, which left every event
- * a teacher did not own stuck on 'upcoming' long after it finished — with no
+ * "Filed" is `report` (the pointer to the file) or `reportFiled` (a sticky marker
+ * that one was filed). The marker exists so that deleting the file — which has to
+ * clear the pointer, or the page offers a report that is gone — does not drop the
+ * event back to awaiting_report. A report filed is a thing a person did, like a
+ * hand cancellation, so it is the one part of "completed" that is stored; the
+ * date and the times never are.
+ *
+ * Nothing else is stored and nothing is written back. The database holds the date
+ * and the times; this compares them to the clock each time an event is shown.
+ * There used to be a status column kept in step by a browser, which left every
+ * event a teacher did not own stuck on 'upcoming' long after it finished — with no
  * stored status at all, that cannot happen.
  *
  * A cancellation the teacher made by hand is sticky, because `cancelledReason`
@@ -124,7 +131,7 @@ export type StatusInput = Pick<
  * is why it is the only one that can appear in the result without being in the
  * row.
  *
- * The `!report` guard matters for the same reason: uploading a report clears the
+ * The `!filed` guard matters for the same reason: uploading a report clears the
  * reason on its way to completing an event, and without the guard that would
  * read back as a hand-made cancellation and the event could never be closed off.
  */
@@ -132,7 +139,12 @@ export function resolveStatus(
   event: StatusInput,
   now: Date = new Date(),
 ): ResolvedStatus {
-  if (event.cancelledReason === 'manual' && !event.report) {
+  // A report means the event happened. `report` is the file and `reportFiled` is
+  // the record that one was filed, so an event stays completed after its report
+  // file is deleted — removing the file does not un-happen the event.
+  const filed = Boolean(event.report) || event.reportFiled === true
+
+  if (event.cancelledReason === 'manual' && !filed) {
     return { status: 'cancelled', autoCancelled: false, reason: 'manual' }
   }
 
@@ -159,8 +171,8 @@ export function resolveStatus(
     return { ...DEFAULT, status: 'ongoing' }
   }
 
-  // Past the end, the report is the only thing that makes it completed.
-  if (event.report) {
+  // Past the end, a filed report is the only thing that makes it completed.
+  if (filed) {
     return { ...DEFAULT, status: 'completed' }
   }
 

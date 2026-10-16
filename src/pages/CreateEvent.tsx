@@ -25,6 +25,7 @@ export default function CreateEvent() {
   const [venue, setVenue] = useState('')
   const [description, setDescription] = useState('')
   const [guestSpeaker, setGuestSpeaker] = useState('')
+  const [collaboration, setCollaboration] = useState('')
   const [coverFile, setCoverFile] = useState<File | null>(null)
   const [coverPreview, setCoverPreview] = useState<string | null>(null)
   const [submitting, setSubmitting] = useState(false)
@@ -74,6 +75,7 @@ export default function CreateEvent() {
       venue,
       description,
       guestSpeaker,
+      collaboration,
     })
     if (!checked.ok) {
       setError(checked.error)
@@ -261,6 +263,21 @@ export default function CreateEvent() {
         </div>
 
         <div>
+          <label htmlFor="ev-collab" className="mb-1 block text-sm font-medium text-gray-700">
+            In Collaboration With
+          </label>
+          <input
+            id="ev-collab"
+            type="text"
+            maxLength={LIMITS.collaboration}
+            value={collaboration}
+            onChange={(e) => setCollaboration(e.target.value)}
+            placeholder="e.g. Department of Physics"
+            className="w-full rounded-lg border border-gray-300 px-3 py-2.5 text-base outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-500/20 sm:pointer-fine:py-2 sm:pointer-fine:text-sm"
+          />
+        </div>
+
+        <div>
           <label htmlFor="ev-desc" className="mb-1 block text-sm font-medium text-gray-700">
             Description
           </label>
@@ -290,7 +307,9 @@ export default function CreateEvent() {
             </span>
             <input type="file" accept="image/*" onChange={handleCoverChange} className="hidden" />
           </label>
-          <p className="mt-1 text-xs text-gray-500">Max 1 MB.</p>
+          <p className="mt-1 text-xs text-gray-500">
+            Up to 1 MB. Images are compressed automatically before upload.
+          </p>
         </div>
 
         {error && (

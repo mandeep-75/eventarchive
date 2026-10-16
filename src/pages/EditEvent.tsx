@@ -27,6 +27,7 @@ export default function EditEvent() {
   const [venue, setVenue] = useState('')
   const [description, setDescription] = useState('')
   const [guestSpeaker, setGuestSpeaker] = useState('')
+  const [collaboration, setCollaboration] = useState('')
   const [coverFile, setCoverFile] = useState<File | null>(null)
   const [coverPreview, setCoverPreview] = useState<string | null>(null)
   const [existingCover, setExistingCover] = useState<string | null>(null)
@@ -90,10 +91,12 @@ export default function EditEvent() {
         setVenue(e.venue)
         setDescription(e.description)
         setGuestSpeaker(e.guestSpeaker ?? '')
+        setCollaboration(e.collaboration ?? '')
         // Kept so the status preview below reflects a report that already exists.
         // Without it, editing an event whose report was filed predicts it is about
-        // to be cancelled for want of one.
-        setHasReport(Boolean(e.report))
+        // to be cancelled for want of one. reportFiled counts as well as report,
+        // because a file that has since been deleted does not un-file the report.
+        setHasReport(Boolean(e.report || e.reportFiled))
         setExistingCover(e.coverImage)
         setLoadingEvent(false)
       })
@@ -151,6 +154,7 @@ export default function EditEvent() {
       venue,
       description,
       guestSpeaker,
+      collaboration,
     })
     if (!checked.ok) {
       setError(checked.error)
@@ -325,6 +329,21 @@ export default function EditEvent() {
         </div>
 
         <div>
+          <label htmlFor="ed-collab" className="mb-1 block text-sm font-medium text-gray-700">
+            In Collaboration With
+          </label>
+          <input
+            id="ed-collab"
+            type="text"
+            maxLength={LIMITS.collaboration}
+            value={collaboration}
+            onChange={(e) => setCollaboration(e.target.value)}
+            placeholder="e.g. Department of Physics"
+            className="w-full rounded-lg border border-gray-300 px-3 py-2.5 text-base outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-500/20 sm:pointer-fine:py-2 sm:pointer-fine:text-sm"
+          />
+        </div>
+
+        <div>
           <label htmlFor="ed-desc" className="mb-1 block text-sm font-medium text-gray-700">
             Description
           </label>
@@ -357,7 +376,9 @@ export default function EditEvent() {
             </span>
             <input type="file" accept="image/*" onChange={handleCoverChange} className="hidden" />
           </label>
-          <p className="mt-1 text-xs text-gray-500">Max 1 MB.</p>
+          <p className="mt-1 text-xs text-gray-500">
+            Up to 1 MB. Images are compressed automatically before upload.
+          </p>
         </div>
 
         {error && (

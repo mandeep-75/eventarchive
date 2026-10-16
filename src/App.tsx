@@ -1,6 +1,7 @@
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import { AuthProvider } from './context/AuthContext'
 import Layout from './components/Layout'
+import InstallPrompt from './components/InstallPrompt'
 import ProtectedRoute from './components/ProtectedRoute'
 import Login from './pages/Login'
 import Events from './pages/Events'
@@ -40,6 +41,10 @@ export default function App() {
 
           <Route path="*" element={<Navigate to="/events" replace />} />
         </Routes>
+        {/* At the app root rather than inside Layout: a first-time visitor who
+            has not signed in is the one who benefits most from installing the
+            app, and a signed-in teacher never sees the login screen again. */}
+        <InstallPrompt />
       </AuthProvider>
     </BrowserRouter>
   )

@@ -29,15 +29,13 @@ export default function Navbar() {
   }
 
   return (
-    <header className="sticky top-0 z-30 flex h-20 w-screen shrink-0 items-center gap-4 border-b border-gray-200/80 bg-white/85 px-6 backdrop-blur-md lg:gap-6 lg:px-10">
+    <header className="sticky top-0 z-30 flex h-16 w-screen shrink-0 items-center gap-4 border-b border-gray-200/80 bg-white/85 px-6 backdrop-blur-md lg:gap-6 lg:px-10">
       <Link to="/" className="group flex min-w-0 items-center gap-2.5 font-semibold text-gray-900">
-        <span className="flex h-20 w-20 shrink-0 items-center justify-center rounded-2xl bg-brand-600 text-white shadow-sm ring-1 ring-inset ring-white/15 transition group-hover:bg-brand-700">
-  <img
-    src={School}
-    alt="KCG EVENT HUB"
-    className="h-full w-full object-contain p-1"
-  />
-</span>
+        {/* Sized below the bar rather than to it, so the mark has a margin
+            inside the header instead of sitting flush against both borders. */}
+        <span className="flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden rounded-xl bg-brand-600 text-white shadow-sm ring-1 ring-inset ring-white/15 transition group-hover:bg-brand-700">
+          <img src={School} alt="KCG EVENT HUB" className="h-full w-full object-contain" />
+        </span>
         {/* Truncates rather than pushing the controls off the bar if the brand
             ever gets longer. */}
         <span className="truncate tracking-tight">KCG EVENT HUB</span>

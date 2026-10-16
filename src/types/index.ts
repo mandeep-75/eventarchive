@@ -50,9 +50,18 @@ export interface CollegeEvent {
   cancelledReason?: CancelReason | null
   cancelledAt?: Date | null
   guestSpeaker?: string | null
+  /** Who the event was run with, if anyone. Free text, so it can name an outside body. */
+  collaboration?: string | null
   participantCount?: number | null
   report?: string | null
   reportName?: string | null
+  /**
+   * True once a report has been filed, and stays true if the file is later
+   * deleted. `report` is only the pointer to the file; this is the sticky record
+   * that a report existed, so deleting the file does not un-complete the event.
+   * Set by a database trigger, never sent by the client.
+   */
+  reportFiled?: boolean
   createdAt: Date
   updatedAt: Date
 }

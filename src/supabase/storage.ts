@@ -238,13 +238,19 @@ export function uploadReport(eventId: string, file: File) {
   return upload(file, eventId, 'report', `${Date.now()}-${file.name}`)
 }
 
-export async function deleteImage(path: string) {
-  try {
-    const { error } = await supabase.storage.from(BUCKET).remove([path])
-    if (error) throw error
-  } catch {
-    // Ignore missing files
-  }
+/**
+ * Removes a file, and says so when it could not be removed.
+ *
+ * It throws rather than swallowing, because deleting a report clears the row's
+ * pointer next: a refusal reported as success would leave the archive pointing
+ * at a file that is still there. The database decides who may do this —
+ * `event_media_delete` is `is_manager()`, so any manager may remove a report,
+ * not only one in the owning department. Clearing the pointer afterwards is the
+ * manager-only `clear_event_report` function; see `data.ts`.
+ */
+export async function deleteFile(path: string) {
+  const { error } = await supabase.storage.from(BUCKET).remove([path])
+  if (error) throw new Error('That file could not be deleted. It may already be gone.')
 }
 
 /** Turns a stored storage path into a temporary URL that can go in `src`. */
@@ -253,6 +259,26 @@ export async function signUrl(path: string | null | undefined): Promise<string |
   const { data, error } = await supabase.storage
     .from(BUCKET)
     .createSignedUrl(path, SIGNED_URL_TTL)
+  if (error) return null
+  return data.signedUrl
+}
+
+/**
+ * Signs a path to be saved rather than displayed.
+ *
+ * `download` makes storage answer with `Content-Disposition: attachment`, so the
+ * browser saves the file instead of painting it. The HTML `download` attribute
+ * cannot do that here: it is ignored on a URL that is not this app's origin, and
+ * a storage URL never is. Nothing is fetched: the tab opened on the returned URL
+ * is what carries the bytes away, so signing still downloads nothing by itself.
+ */
+export async function signDownloadUrl(
+  path: string,
+  fileName: string,
+): Promise<string | null> {
+  const { data, error } = await supabase.storage
+    .from(BUCKET)
+    .createSignedUrl(path, SIGNED_URL_TTL, { download: fileName })
   if (error) return null
   return data.signedUrl
 }

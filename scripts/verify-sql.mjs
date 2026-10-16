@@ -307,9 +307,10 @@ try {
       on conflict (bucket_id, name) do update set owner = '${ALICE}';`)),
     DENIED)
 
-  // The delete and update policies themselves are unchanged and still name the
-  // owning department, so a manager exercises them: BOB is in DEPT_A, which
-  // owns EVENT_A, and would pass without is_manager if select allowed him.
+  // Update still names the owning department, so a manager exercises it: BOB is
+  // in DEPT_A, which owns EVENT_A, and would pass without is_manager if select
+  // allowed him. Delete is the exception — it is managers-only and NOT
+  // department-scoped, so the same object also goes for CAROL in DEPT_B.
   sql(`update public.profiles set is_manager = true where id = '${BOB}';`)
   check('storage: a manager can read media', reads(BOB), '1')
   seedPhoto()
@@ -319,7 +320,53 @@ try {
   asUserCommit(BOB, `update storage.objects set owner = '${BOB}' where name = '${photoPath}';`)
   check('storage: a manager can overwrite', photoOwner(), BOB)
   sql(`update public.profiles set is_manager = false where id = '${BOB}';`)
+  sql(`update public.profiles set is_manager = true where id = '${CAROL}';`)
+  seedPhoto()
+  asUserCommit(CAROL, `delete from storage.objects where name = '${photoPath}';`)
+  check('storage: a manager in another department can delete', photoRows(), '0')
+  sql(`update public.profiles set is_manager = false where id = '${CAROL}';`)
   sql(`delete from storage.objects where name = '${photoPath}';`)
+
+  // ─── Removing a report ──────────────────────────────────────────────────
+  // Deleting the object is not an edit, but the row's pointer has to go too or
+  // the page offers a report that is already gone. clear_event_report is the
+  // narrow door: a manager, in any department, changing only these two columns.
+  // It leaves report_filed alone, so the event stays completed — the file going
+  // does not un-happen the event.
+  const reportSet = () =>
+    sql(`select report || '/' || report_name from public.events where id = '${EVENT_B}';`).out
+  sql(`update public.events set report = 'events/x/report/r.pdf', report_name = 'r.pdf' where id = '${EVENT_B}';`)
+  check('report: the pointer is set to start with', reportSet(), 'events/x/report/r.pdf/r.pdf')
+  // Filing a report is what makes an event completed, and the trigger records it.
+  check('report: filing it marks the event as filed',
+    sql(`select report_filed from public.events where id = '${EVENT_B}';`).out, 't')
+  const refuse = asUser(ALICE, `select public.clear_event_report('${EVENT_B}');`)
+  check('report: a non-manager is refused, with a reason rather than silence',
+    [refuse.ok, /Only a manager/.test(refuse.err)], [false, true])
+  check('report: a teacher with no department is refused too',
+    asUser(DAVE, `select public.clear_event_report('${EVENT_B}');`).ok, false)
+  // CAROL is in DEPT_B, which owns EVENT_B, but the case that matters is a
+  // manager clearing a report outside their own department: BOB is in DEPT_A and
+  // must still be able to clear EVENT_B's, because deleting is a manager's job
+  // wherever the report was filed.
+  sql(`update public.profiles set is_manager = true where id = '${BOB}';`)
+  asUserCommit(BOB, `select public.clear_event_report('${EVENT_B}');`)
+  check('report: a manager in another department can clear it', reportSet(), '')
+  // The whole point of report_filed: clearing the pointer removes the file link,
+  // not the fact that the event happened, so it stays completed.
+  check('report: clearing the pointer does not un-complete the event',
+    sql(`select report_filed from public.events where id = '${EVENT_B}';`).out, 't')
+  // And it is sticky: the trigger only ever moves it to true, so even a direct
+  // write that tries to clear it is overridden.
+  sql(`update public.events set report_filed = false where id = '${EVENT_B}';`)
+  check('report: the marker cannot be quietly cleared',
+    sql(`select report_filed from public.events where id = '${EVENT_B}';`).out, 't')
+  // …and it cannot be claimed either: the trigger overwrites whatever a write
+  // sends, so only the report column can mark an event as filed.
+  sql(`update public.events set report_filed = true, report = null where id = '${EVENT_A}';`)
+  check('report: the marker cannot be claimed with no report',
+    sql(`select report_filed from public.events where id = '${EVENT_A}';`).out, 'f')
+  sql(`update public.profiles set is_manager = false where id = '${BOB}';`)
 
   // ─── Events ─────────────────────────────────────────────────────────────
   // Each case writes a distinct title, so reading the title back says exactly

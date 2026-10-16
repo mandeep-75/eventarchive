@@ -11,8 +11,9 @@
 --     at creation and cannot be changed by a later write;
 --   * a teacher may only file a new event under their own department;
 --   * only managers curate departments and teacher profiles;
---   * every signed-in teacher may upload an event's photos and report, but only
---     managers may read them back — see the storage section.
+--   * any teacher in an event's department may upload its photos and file its
+--     report — filing media is part of running the event — but only managers
+--     may read them back or remove them, see the storage section.
 --
 -- Run in the Supabase SQL editor, or `supabase db push` for a linked project.
 
@@ -106,12 +107,21 @@ create table if not exists public.events (
   cancelled_reason  text    check (cancelled_reason in ('manual', 'no_report')),
   cancelled_at      timestamptz,
   guest_speaker     text,
+  -- Who the event was run with, if anyone. Free text on purpose: the partner is
+  -- often a body outside the college, not one of our departments.
+  collaboration     text,
   -- Kept so rows created before the field left the form still read correctly,
   -- and so the column is there if it ever comes back. Nothing writes it now;
   -- the form no longer collects a count.
   participant_count integer,
   report            text,
   report_name       text,
+  -- Records that a report was filed, and is sticky: it stays true after the file
+  -- itself is deleted, so removing a report does not un-complete an event that
+  -- actually happened. Like cancelled_reason, it is a record of something a
+  -- person did rather than something the clock implies, which is why it is the
+  -- one part of "completed" that is stored. Set by a trigger, never by a client.
+  report_filed      boolean not null default false,
   created_at        timestamptz not null default now(),
   updated_at        timestamptz not null default now()
 );
@@ -127,6 +137,8 @@ alter table public.events drop column if exists status;
 -- definition above, so a column added to the file never reaches an existing
 -- project on its own.
 alter table public.events add column if not exists coordinator_name text;
+alter table public.events add column if not exists collaboration text;
+alter table public.events add column if not exists report_filed boolean not null default false;
 
 -- The events list, calendar and filters all read by date and department.
 create index if not exists events_event_date_idx  on public.events (event_date);
@@ -364,6 +376,45 @@ create trigger events_stamp_coordinator_name
   before insert on public.events
   for each row execute function public.events_stamp_coordinator_name();
 
+-- Sticky marker that a report was filed.
+--
+-- `report` is only the pointer to the file; deleting the file has to clear it, or
+-- the page would keep offering a report that is already gone. Without a second
+-- thing to remember, that would drop the event back to awaiting_report — the
+-- file going does not un-happen the event. This column is that second thing, and
+-- it only ever moves to true: a report present marks it, and a value already true
+-- is kept whatever a later write sends, so clearing the pointer cannot quietly
+-- undo it.
+--
+-- The trigger sets it rather than the app so the pointer and the marker cannot
+-- disagree — both land in the same statement. A client is not trusted to set it,
+-- for the same reason it is not trusted with coordinator_name: fromEvent omits
+-- report_filed, and the assignment below overwrites whatever a client sends, so
+-- the only value that lands is one the report column justifies.
+--
+-- OLD is read only inside the UPDATE branch. Postgres does not guarantee that
+-- `and` short-circuits, so `tg_op = 'UPDATE' and old.report_filed` could still
+-- evaluate the right-hand side on an insert, where OLD is unassigned and raises
+-- "record old is not assigned yet". Split on the operation instead.
+create or replace function public.events_stamp_report_filed()
+returns trigger
+language plpgsql
+as $$
+begin
+  if tg_op = 'UPDATE' then
+    new.report_filed := old.report_filed or new.report is not null;
+  else
+    new.report_filed := new.report is not null;
+  end if;
+  return new;
+end;
+$$;
+
+drop trigger if exists events_stamp_report_filed on public.events;
+create trigger events_stamp_report_filed
+  before insert or update on public.events
+  for each row execute function public.events_stamp_report_filed();
+
 -- Fill in the name for events that predate the column, so a project that has
 -- been running does not show a blank creator on everything it already holds.
 -- Only where it is null, so this cannot undo the name a trigger already stamped.
@@ -372,6 +423,15 @@ set coordinator_name = p.name
 from public.profiles p
 where p.id = e.coordinator_id
   and e.coordinator_name is null;
+
+-- Same idea for report_filed: a database that already held reports when the
+-- column arrived would otherwise drop every completed event back to
+-- awaiting_report on the first paste, because the column defaults to false. Only
+-- where a report is present, so this cannot mark an event that never had one.
+update public.events
+set report_filed = true
+where report is not null
+  and not report_filed;
 
 -- ─── Fail-closed default ─────────────────────────────────────────────────
 -- Every table in the public schema is reachable through Supabase's auto
@@ -467,8 +527,9 @@ on conflict (id) do update set file_size_limit = excluded.file_size_limit;
 -- a signed URL is minted only for a caller the select policy lets see the
 -- object, so a teacher who uploads a cover cannot open it again afterwards.
 -- Writing is deliberately wider than reading. Filing the media is part of
--- running an event and stays with the department that owns it; looking through
--- what was filed is the review, and that is a manager's job.
+-- running an event and stays with the department that owns it; looking through,
+-- and clearing out, what was filed is the review, and that is a manager's job —
+-- which is why deleting below is not scoped to the owning department.
 --
 -- Note this is stricter than events_select above. Any teacher may read the
 -- event's own row — title, date, venue, and the media *paths* — because an
@@ -565,13 +626,49 @@ create policy event_media_update on storage.objects
     )
   );
 
+-- Deleting is the one media write a manager may do outside the owning
+-- department. Tidying the archive is a manager's job, and a report filed against
+-- the wrong event should not need that department's manager to remove it. It is
+-- still not an edit: the object goes, and the row's pointer is cleared afterwards
+-- by clear_event_report below, which checks is_manager() too. events_update stays
+-- department-scoped, so the Edit button and every other field stay with the
+-- department.
 drop policy if exists event_media_delete on storage.objects;
 create policy event_media_delete on storage.objects
   for delete to authenticated
-  using (
-    bucket_id = 'event-media'
-    and (
-      name like 'events/%/' || auth.uid()::text || '/%'
-      or public.manages_event_media(name)
-    )
-  );
+  using (bucket_id = 'event-media' and public.is_manager());
+
+-- Clearing the row's pointer is the other half of deleting a report, and it is
+-- deliberately not an edit.
+--
+-- `report` is the pointer the page signs to open or download the file, so
+-- removing the object without it would leave the page offering a report that is
+-- already gone. report_filed is left alone on purpose: the event stays completed
+-- because a report was filed, and deleting the file is not an un-happening, which
+-- is exactly the case this function exists to get right. events_update is
+-- department-scoped, so a manager outside the department cannot write the row —
+-- and widening that policy would hand out the Edit button and every other column
+-- with it. This is the narrow alternative: a definer function that changes exactly
+-- report and report_name and refuses anyone who is not a manager. Like the other
+-- definer functions it only ever answers about the caller, plus the id it is
+-- handed.
+create or replace function public.clear_event_report(p_event_id uuid)
+returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  if not public.is_manager() then
+    raise exception 'Only a manager may remove a report';
+  end if;
+  update public.events
+    set report = null, report_name = null
+    where id = p_event_id;
+end;
+$$;
+
+-- The same revoke/grant pair as manages_event_media, for the same reason: the
+-- revoke takes EXECUTE away from authenticated too, and the grant puts it back.
+revoke execute on function public.clear_event_report(uuid) from public, anon;
+grant execute on function public.clear_event_report(uuid) to authenticated;

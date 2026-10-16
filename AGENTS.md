@@ -100,22 +100,34 @@ the trigger, the cron job and the client write-back are all **absent**. If you
 find yourself wanting a background job to keep a status in step, that is the bug
 coming back — derive it instead.
 
-`cancelled_reason` is the exception: a hand cancellation (`'manual'`) is
-something a person did, so it is stored and sticky. `'no_report'` is derived and
-never written.
+`cancelled_reason` and `report_filed` are the exceptions: a hand cancellation
+(`'manual'`) and a filed report are things a person did, so they are stored and
+sticky. `'no_report'` is derived and never written. Neither is a mirror of the
+status — they are the two facts the derived rule reads.
 
-### 1a. Completed means a report exists
+### 1a. Completed means a report was filed
 
-There are five derived statuses, and `completed` is not one of them until
-`report` is set. The rule is:
+There are five derived statuses, and `completed` is not one of them until a
+report has been filed. "Filed" is `report` (the pointer to the file) **or**
+`report_filed` (a sticky record that one was filed). The rule is:
 
 | | |
 | --- | --- |
 | before start | `upcoming` |
 | start … end | `ongoing` |
-| ended, report uploaded | `completed` |
+| ended, report filed | `completed` |
 | ended, no report, within `REPORT_GRACE_DAYS` | `awaiting_report` |
 | ended, no report, past it | `cancelled` (`no_report`) |
+
+`report_filed` is the one stored part of `completed`, and for the same reason
+`cancelled_reason` is stored: it records something a person did. Deleting a
+report **clears the pointer, not the marker**. `report` is what the page signs to
+open the file, so it has to go when the object does; `report_filed` is what says
+the event happened, so it stays — otherwise removing a completed event's report
+would drop it back to `awaiting_report`. It is set by the
+`events_stamp_report_filed` trigger from `report`, only ever moves to true, and
+`fromEvent` omits it so a client cannot mark an event completed. Do not derive
+`completed` from the file's mere presence again.
 
 `awaiting_report` is a status and not a `pendingReport` boolean bolted onto
 `completed`. It used to be the boolean, threaded through five components, and
@@ -232,14 +244,23 @@ Layout is `events/{eventId}/{uid}/{folder}/{file}`, bucket `event-media`.
   drawn for anyone else. The upload buttons stay under `canManage`, because
   filing media is part of running an event. Do not widen the select policy to
   make a photo appear for a teacher — that is the rule changing, not a bug.
-- **That select policy also decides who may overwrite or delete**, which is the
+  Downloading the report signs it with storage's `download` option so the browser
+  saves it instead of rendering it (the HTML `download` attribute is ignored on a
+  cross-origin URL, and a storage URL always is). Deleting is the one media write
+  that is **not** department-scoped: `event_media_delete` is `is_manager()`, so a
+  manager may remove any department's report, and the button is gated on
+  `isManager` alone. Clearing the row's pointer is not an edit — `events_update`
+  stays department-scoped and the Edit button with it — so it goes through the
+  manager-only `clear_event_report(uuid)` definer function. The delete asks twice,
+  because it removes the file itself and nothing brings it back.
+- **That select policy also decides who may overwrite**, which is the
   non-obvious half: Postgres applies it to a `DELETE` with a `WHERE` clause and
   to `on conflict do update`, so a non-manager's *insert* is the only write that
-  lands — the update and delete policies naming the department are unreachable
-  for them. Hence **no path is ever written twice**: every upload, the cover
-  included, carries a timestamp and there is no `upsert`, so replacing a photo
-  is a fresh insert rather than an overwrite. Put a fixed file name back and a
-  teacher's second cover upload fails.
+  lands — the update policy naming the department is unreachable for them. Hence
+  **no path is ever written twice**: every upload, the cover included, carries a
+  timestamp and there is no `upsert`, so replacing a photo is a fresh insert
+  rather than an overwrite. Put a fixed file name back and a teacher's second
+  cover upload fails.
 - A gallery photo is drawn **inside its own tile**, not opened over the page. A
   grid is meant to be looked at, and a dialog showing one image at a time puts
   that back to one press per photo; the tile carries a full-size link for when

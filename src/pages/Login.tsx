@@ -3,6 +3,7 @@ import { useLocation, useNavigate } from 'react-router-dom'
 import School  from '../public/Corner logo.png'
 import { Eye, EyeOff } from 'lucide-react'
 import { loginWithEmail } from '../supabase/auth'
+import DeveloperLinks from '../components/DeveloperLinks'
 
 export default function Login() {
   const [email, setEmail] = useState('')
@@ -125,6 +126,8 @@ export default function Login() {
             {submitting ? 'Signing in…' : 'Sign In'}
           </button>
         </form>
+
+        <DeveloperLinks />
       </div>
     </div>
   )

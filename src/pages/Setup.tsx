@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState, type FormEvent } from 'react'
 import {
   BadgeCheck,
+  ChevronDown,
   Eye,
   EyeOff,
   Plus,
@@ -28,6 +29,22 @@ export default function Setup() {
   const [users, setUsers] = useState<UserProfile[]>([])
   const [newDept, setNewDept] = useState('')
   const [error, setError] = useState('')
+  // Which department rows are open. A Set rather than a single id so any number
+  // can be open at once — a manager comparing two departments should not have to
+  // close one to see the other.
+  const [expandedDepts, setExpandedDepts] = useState<Set<string>>(new Set())
+  // The whole section collapses from its heading, so a manager who is only here
+  // for teachers can fold the department list away. One toggle covers both the
+  // list and the add form — there is no separate button to learn.
+  const [showDepartments, setShowDepartments] = useState(false)
+
+  function toggleDepartment(id: string) {
+    setExpandedDepts((prev) => {
+      const next = new Set(prev)
+      if (!next.delete(id)) next.add(id)
+      return next
+    })
+  }
 
   useEffect(() => {
     if (!isManager) return
@@ -114,6 +131,17 @@ export default function Setup() {
         </p>
       </div>
 
+      {/* Kept out of the collapsible Departments body: a failed teacher move
+          comes from the always-visible list, so its error would otherwise sit
+          hidden behind a closed section. */}
+      {error && (
+        <p role="alert" className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-600">
+          {error}
+        </p>
+      )}
+
+      <CreateTeacher departments={departments} />
+
       <section className="space-y-3">
         <h2 className="font-semibold text-gray-900">Teachers</h2>
         {users.length === 0 ? (
@@ -184,14 +212,36 @@ export default function Setup() {
         )}
       </section>
 
-      <CreateTeacher departments={departments} />
-
       <section className="space-y-3">
-        <h2 className="font-semibold text-gray-900">Departments</h2>
+        {/* One toggle for the whole section: it opens to reveal both the list
+            and the add form, so there is no separate button to learn. */}
+        <h2 className="font-semibold text-gray-900">
+          <button
+            type="button"
+            onClick={() => setShowDepartments((v) => !v)}
+            aria-expanded={showDepartments}
+            aria-controls="departments-body"
+            className="-ml-1 flex items-center gap-1.5 rounded-lg px-1 py-1 transition hover:bg-gray-50"
+          >
+            <ChevronDown
+              aria-hidden="true"
+              className={`h-4 w-4 shrink-0 text-gray-400 transition-transform ${
+                showDepartments ? '' : '-rotate-90'
+              }`}
+            />
+            Departments
+          </button>
+        </h2>
+        {/* Kept in the tree and toggled with the `hidden` attribute so the
+            heading's aria-controls always points at a real element. */}
+        <div id="departments-body" className="space-y-3" hidden={!showDepartments}>
         {/* Stacks below sm. A fixed w-64 input next to the button is ~344px
             wide, which is more than a 360px phone has left after the page
             gutter, so the row used to overflow the screen. */}
-        <form onSubmit={handleAddDepartment} className="flex flex-col gap-2 sm:flex-row sm:items-center">
+        <form
+          onSubmit={handleAddDepartment}
+          className="flex flex-col gap-2 rounded-xl border border-gray-200 bg-white p-4 sm:flex-row sm:items-center"
+        >
           <input
             value={newDept}
             onChange={(e) => {
@@ -208,34 +258,85 @@ export default function Setup() {
             <Plus className="h-4 w-4" /> Add
           </button>
         </form>
-        {error && <p className="text-sm text-red-600">{error}</p>}
-
         {departments.length === 0 ? (
           <p className="text-sm text-gray-400">
             No departments yet. Add one to assign teachers.
           </p>
         ) : (
           <ul className="divide-y divide-gray-100 rounded-xl border border-gray-200 bg-white">
-            {departments.map((d) => (
-              <li key={d.id} className="flex items-center justify-between gap-3 px-4 py-3">
-                <div className="min-w-0">
-                  <p className="font-medium break-words text-gray-900">{d.name}</p>
-                  <p className="text-xs text-gray-500">
-                    {usersByDepartment.get(d.id)?.length ?? 0} teacher(s)
-                  </p>
-                </div>
-                <button
-                  onClick={() => handleDeleteDepartment(d.id, d.name)}
-                  className="-mr-1.5 shrink-0 rounded p-3 text-gray-400 transition hover:bg-red-50 hover:text-red-600 sm:pointer-fine:p-1.5"
-                  title={`Delete ${d.name}`}
-                  aria-label={`Delete ${d.name}`}
-                >
-                  <Trash2 className="h-4 w-4" />
-                </button>
-              </li>
-            ))}
+            {departments.map((d) => {
+              const members = usersByDepartment.get(d.id) ?? []
+              const expanded = expandedDepts.has(d.id)
+              const panelId = `dept-panel-${d.id}`
+              return (
+                <li key={d.id}>
+                  <div className="flex items-center gap-2 pr-4">
+                    {/* The whole row is the toggle, not just the chevron: a
+                        16px icon is not a touch target. */}
+                    <button
+                      type="button"
+                      onClick={() => toggleDepartment(d.id)}
+                      aria-expanded={expanded}
+                      aria-controls={panelId}
+                      className="flex min-w-0 flex-1 items-center gap-3 py-3 pl-4 pr-2 text-left"
+                    >
+                      <ChevronDown
+                        aria-hidden="true"
+                        className={`h-4 w-4 shrink-0 text-gray-400 transition-transform ${
+                          expanded ? '' : '-rotate-90'
+                        }`}
+                      />
+                      <span className="min-w-0">
+                        <span className="block font-medium break-words text-gray-900">
+                          {d.name}
+                        </span>
+                        <span className="block text-xs text-gray-500">
+                          {members.length} teacher(s)
+                        </span>
+                      </span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleDeleteDepartment(d.id, d.name)}
+                      className="-mr-1.5 shrink-0 rounded p-3 text-gray-400 transition hover:bg-red-50 hover:text-red-600 sm:pointer-fine:p-1.5"
+                      title={`Delete ${d.name}`}
+                      aria-label={`Delete ${d.name}`}
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </button>
+                  </div>
+                  {expanded && (
+                    <div id={panelId} className="border-t border-gray-100 bg-gray-50/60 px-4 py-3">
+                      {members.length === 0 ? (
+                        <p className="text-sm text-gray-400">
+                          No teachers assigned to this department.
+                        </p>
+                      ) : (
+                        <ul className="space-y-2">
+                          {members.map((m) => (
+                            <li key={m.id} className="flex min-w-0 items-center gap-2 text-sm">
+                              <Users
+                                aria-hidden="true"
+                                className="h-3.5 w-3.5 shrink-0 text-gray-400"
+                              />
+                              <span className="min-w-0 truncate font-medium text-gray-800">
+                                {m.name}
+                              </span>
+                              <span className="min-w-0 truncate text-xs text-gray-500">
+                                {m.email}
+                              </span>
+                            </li>
+                          ))}
+                        </ul>
+                      )}
+                    </div>
+                  )}
+                </li>
+              )
+            })}
           </ul>
         )}
+        </div>
       </section>
     </div>
   )
@@ -288,7 +389,7 @@ function CreateTeacher({ departments }: { departments: { id: string; name: strin
       <h2 className="font-semibold text-gray-900">Add a teacher</h2>
       <p className="text-sm text-gray-500">
         Creates the login and files the teacher under a department. Move them later from the
-        list above.
+        list below.
       </p>
       <form
         onSubmit={handleSubmit}

@@ -214,7 +214,13 @@ try {
   check('no "College Administrator" role label', !body.includes('College Administrator'))
   check('no "Head of Department" role label', !body.includes('Head of Department'))
   check('no separate Analytics page', !body.includes('Analytics'))
-  const isManager = body.includes('Setup')
+  // Detected from the manager-only link actually being in the DOM rather than
+  // from its label. The label is copy and was renamed once already
+  // ("Setup" -> "Control Panel"), which silently turned every manager into a
+  // "non-manager" here and failed the checks that branch on it. The route is
+  // the stable part; both navs filter the same single list, so the link only
+  // exists for a manager.
+  const isManager = await evaluate(`!!document.querySelector('a[href="/setup"]')`)
   console.log(`INFO  signed in as ${isManager ? 'a manager' : 'a non-manager'}`)
 
   // ── 4. Events page: one list, a department filter, no per-teacher scope ─
@@ -258,11 +264,16 @@ try {
     `expected 0 selects, found ${selectCount}`,
   )
   check('create form renders', body.includes('Create Event'), body.slice(0, 120))
+  // With no date yet the form says "Set a date to see the status."; once a date
+  // is picked it names the projected status ("… based on the date."). Either
+  // proves the status is derived, not chosen from a control.
   check(
     'status explained as derived from date',
-    body.includes('worked out automatically') || body.includes('based on the date'),
+    body.includes('Set a date to see the status') || body.includes('based on the date'),
   )
-  check('department shown as your own', body.includes('your department'), body.slice(0, 160))
+  // The department is pinned to the caller, so the form names it rather than
+  // offering a picker; an account with none falls back to "your department".
+  check('department shown as your own', body.includes('Filed under'), body.slice(0, 160))
   check('guest speaker now settable', body.includes('Guest / Speaker'))
   // participantCount left the form deliberately; the column stays so rows
   // created while it existed still read correctly on the details page.
@@ -292,9 +303,9 @@ try {
     )
     const hasEdit = detail.includes('Edit')
     // The view-only line is what a teacher from another department sees instead
-    // of the action bar: "You can view this event, but editing it is limited to
-    // teachers in <department>."
-    const saysViewOnly = detail.includes('You can view this event')
+    // of the action bar: "View only — editing is limited to <department>
+    // teachers."
+    const saysViewOnly = detail.includes('View only')
     check('edit affordances follow the department rule', hasEdit ? true : saysViewOnly, `edit=${hasEdit} viewOnly=${saysViewOnly}`)
     check('no dead "replace report via Edit" hint', !detail.includes('replace report via Edit'))
 
@@ -316,9 +327,18 @@ try {
       check('a non-manager is never sent a signed media URL', detailSigned === 0, `${detailSigned} signed`)
       check('a non-manager was never offered photo uploads', !detail.includes('Add photos'), '')
       check('report section is hidden from a non-manager', !headings.includes('Report'), headings.join(' | '))
+      // Reading the report is manager-only; filing it is a department action.
+      // So the same non-manager is offered the upload when the event is theirs
+      // and refused it when it belongs to another department.
       if (hasEdit) {
         check(
-          'a non-manager teacher is not offered a report upload',
+          'a department teacher is offered a report upload',
+          detail.includes('Upload report') || detail.includes('Replace report'),
+          'report upload missing',
+        )
+      } else {
+        check(
+          'a teacher outside the department is not offered a report upload',
           !detail.includes('Upload report') && !detail.includes('Replace report'),
           'report upload shown',
         )
