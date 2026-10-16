@@ -1,6 +1,7 @@
 import { useState, type FormEvent } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
-import { Eye, EyeOff, School } from 'lucide-react'
+import School  from '../public/Corner logo.png'
+import { Eye, EyeOff } from 'lucide-react'
 import { loginWithEmail } from '../supabase/auth'
 
 export default function Login() {
@@ -48,10 +49,14 @@ export default function Login() {
     <div className="flex min-h-dvh items-center justify-center bg-gray-50 px-4 py-8">
       <div className="w-full max-w-sm">
         <div className="mb-8 flex flex-col items-center gap-2.5">
-          <span className="flex h-12 w-12 items-center justify-center rounded-xl bg-brand-600 text-white shadow-card ring-1 ring-inset ring-white/15">
-            <School className="h-6 w-6" />
-          </span>
-          <h1 className="text-xl font-bold tracking-tight text-gray-900">College Event Hub</h1>
+        <span className="flex h-40 w-40 items-center justify-center rounded-2xl bg-brand-600 shadow-card ring-1 ring-inset ring-white/15">
+  <img
+    src={School}
+    alt="KCG EVENT HUB"
+    className="h-full w-full object-contain p-2"
+  />
+</span>
+          <h1 className="text-xl font-bold tracking-tight text-gray-900">KCG EVENT HUB</h1>
           <p className="text-sm text-gray-500">Sign in to your account</p>
         </div>
 

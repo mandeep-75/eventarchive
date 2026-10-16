@@ -1,5 +1,6 @@
 import { Link, NavLink, useNavigate } from 'react-router-dom'
-import { LogOut, School, UserCircle2 } from 'lucide-react'
+import { LogOut, UserCircle2 } from 'lucide-react'
+import School  from '../public/Corner logo.png'
 import { logout } from '../supabase/auth'
 import { useAuth } from '../context/AuthContext'
 import { useDepartments } from '../hooks/useDepartments'
@@ -28,14 +29,18 @@ export default function Navbar() {
   }
 
   return (
-    <header className="sticky top-0 z-30 flex h-14 shrink-0 items-center gap-2 border-b border-gray-200/80 bg-white/85 px-4 backdrop-blur-md lg:gap-4 lg:px-6">
+    <header className="sticky top-0 z-30 flex h-20 w-screen shrink-0 items-center gap-4 border-b border-gray-200/80 bg-white/85 px-6 backdrop-blur-md lg:gap-6 lg:px-10">
       <Link to="/" className="group flex min-w-0 items-center gap-2.5 font-semibold text-gray-900">
-        <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-brand-600 text-white shadow-sm ring-1 ring-inset ring-white/15 transition group-hover:bg-brand-700">
-          <School className="h-4 w-4" />
-        </span>
+        <span className="flex h-20 w-20 shrink-0 items-center justify-center rounded-2xl bg-brand-600 text-white shadow-sm ring-1 ring-inset ring-white/15 transition group-hover:bg-brand-700">
+  <img
+    src={School}
+    alt="KCG EVENT HUB"
+    className="h-full w-full object-contain p-1"
+  />
+</span>
         {/* Truncates rather than pushing the controls off the bar if the brand
             ever gets longer. */}
-        <span className="truncate tracking-tight">College Event Hub</span>
+        <span className="truncate tracking-tight">KCG EVENT HUB</span>
       </Link>
 
       {/* Desktop navigation. Below lg it is hidden because the bottom tab bar
