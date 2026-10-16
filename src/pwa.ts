@@ -37,18 +37,20 @@ if (typeof window !== 'undefined') {
   window.addEventListener('appinstalled', clearInstallPrompt)
 }
 
-// Registers the service worker in public/sw.js. Kept out of dev: a caching
-// worker in front of Vite's module server serves stale modules and hides HMR,
-// so it would trade a working development loop for testing a manifest that is
-// not being changed.
+// Registers the service worker in public/sw.js. The worker is network-only —
+// it caches nothing, so there is no offline mode to go stale — and exists only
+// because Chrome and Edge will not offer to install without one. Kept out of
+// dev: a worker in front of Vite's module server would sit between the browser
+// and the dev server, and there is nothing to test that a manifest is not
+// already covering.
 export function registerServiceWorker() {
   if (!import.meta.env.PROD) return
   if (!('serviceWorker' in navigator)) return
 
   window.addEventListener('load', () => {
     navigator.serviceWorker.register('/sw.js').catch(() => {
-      // A failed registration only costs installability and offline loading;
-      // the app itself is unaffected, so there is nothing to surface.
+      // A failed registration only costs installability; the app itself is
+      // unaffected, so there is nothing to surface.
     })
   })
 }

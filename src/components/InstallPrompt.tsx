@@ -121,8 +121,7 @@ export default function InstallPrompt() {
                 Install KCG Event Hub
               </h2>
               <p className="mt-1 text-sm text-gray-600">
-                Add it to your home screen to open it full screen and reach the
-                archive offline.
+                Add it to your home screen to open it full screen.
               </p>
             </div>
           </div>
