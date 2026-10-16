@@ -81,10 +81,12 @@ export default function InstallPrompt() {
       if (choice?.outcome === 'accepted') setVisible(false)
       else dismiss()
     } catch {
-      // The event is single-use. If the browser refuses it there is nothing to
-      // retry, so fall back to telling the user how to do it by hand.
+      // The event is single-use, so a refusal cannot be retried. The manual
+      // steps are the iOS Share sheet, which no other platform has; anywhere
+      // else a refused prompt simply closes.
       clearInstallPrompt()
-      setSteps(true)
+      if (isIos()) setSteps(true)
+      else dismiss()
     }
   }
 

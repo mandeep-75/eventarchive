@@ -5,8 +5,8 @@
 // nothing is ever cached. The worker exists because Chrome and Edge will not
 // offer to install without one, and it is kept to a pure network pass-through.
 
-self.addEventListener('install', () => {
-  self.skipWaiting()
+self.addEventListener('install', (event) => {
+  event.waitUntil(self.skipWaiting())
 })
 
 self.addEventListener('activate', (event) => {
@@ -20,10 +20,18 @@ self.addEventListener('activate', (event) => {
   )
 })
 
-// Network-only. Responding explicitly keeps the fetch handler real, which is
-// the part the installer looks for, while every request still goes to the
-// network — no offline fallback, no stale bytes, and nothing shared between
-// teachers.
+// Network-only, and only for same-origin GETs. Responding explicitly keeps the
+// fetch handler real, which is the part the installer looks for, while every
+// request still goes to the network — no offline fallback, no stale bytes.
+//
+// Everything else is deliberately left alone. Supabase auth, REST and signed
+// media are all cross-origin, and every write is a non-GET; letting those go
+// straight to the browser means the worker can never sit in the path of a
+// login, a mutation or a refresh, which a blanket `respondWith(fetch(...))`
+// would have done for all of them.
 self.addEventListener('fetch', (event) => {
-  event.respondWith(fetch(event.request))
+  const { request } = event
+  if (request.method !== 'GET') return
+  if (new URL(request.url).origin !== self.location.origin) return
+  event.respondWith(fetch(request))
 })

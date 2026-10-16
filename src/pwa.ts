@@ -47,10 +47,16 @@ export function registerServiceWorker() {
   if (!import.meta.env.PROD) return
   if (!('serviceWorker' in navigator)) return
 
-  window.addEventListener('load', () => {
+  const register = () => {
     navigator.serviceWorker.register('/sw.js').catch(() => {
       // A failed registration only costs installability; the app itself is
       // unaffected, so there is nothing to surface.
     })
-  })
+  }
+
+  // The script is a deferred module, so `load` has normally not fired yet — but
+  // if it already has (a late import, a bfcache restore), waiting for it again
+  // would mean never registering at all.
+  if (document.readyState === 'complete') register()
+  else window.addEventListener('load', register, { once: true })
 }
