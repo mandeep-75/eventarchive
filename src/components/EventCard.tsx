@@ -52,10 +52,14 @@ export default function EventCard({
           />
         ) : (
           // A set cover is unreadable to anyone but a manager, so it is not
-          // "missing" for them — the placeholder has to say so.
+          // "missing" for them — the placeholder has to say so. A manager whose
+          // signature is simply still in flight should not be told the photo is
+          // hidden from them, so the copy is only for non-managers.
           <NoImage
             className="h-full w-full"
-            label={event.coverImage ? 'Cover visible to managers only' : 'No cover image'}
+            label={
+              event.coverImage && !isManager ? 'Cover visible to managers only' : 'No cover image'
+            }
           />
         )}
       </div>

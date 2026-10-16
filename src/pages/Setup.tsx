@@ -27,7 +27,9 @@ export default function Setup() {
   const { profile, isManager } = useAuth()
   const { departments } = useDepartments()
   const [users, setUsers] = useState<UserProfile[]>([])
+  const [usersLoaded, setUsersLoaded] = useState(false)
   const [newDept, setNewDept] = useState('')
+  const [addingDept, setAddingDept] = useState(false)
   const [error, setError] = useState('')
   // Which department rows are open. A Set rather than a single id so any number
   // can be open at once — a manager comparing two departments should not have to
@@ -48,7 +50,16 @@ export default function Setup() {
 
   useEffect(() => {
     if (!isManager) return
-    return subscribeUsers(setUsers)
+    return subscribeUsers(
+      (rows) => {
+        setUsers(rows)
+        setUsersLoaded(true)
+      },
+      // Without this a failed fetch leaves the teacher list empty with no
+      // explanation, and a teacher could be created against a stale department
+      // list. Surface it like every other failure on this page.
+      (message) => setError(message),
+    )
   }, [isManager])
 
   const existingNames = useMemo(
@@ -83,6 +94,10 @@ export default function Setup() {
 
   async function handleAddDepartment(e: FormEvent) {
     e.preventDefault()
+    // A double-tap would otherwise fire two inserts; the second is refused by
+    // the unique constraint, but the error would be shown for a department that
+    // was in fact created.
+    if (addingDept) return
     const name = newDept.trim()
     if (!name) return
     if (existingNames.has(name.toLowerCase())) {
@@ -90,6 +105,7 @@ export default function Setup() {
       return
     }
     try {
+      setAddingDept(true)
       await addDepartment(name)
       setNewDept('')
       setError('')
@@ -99,6 +115,8 @@ export default function Setup() {
       // check above only sees the departments it has loaded, so a row added
       // from another tab still lands here on the unique constraint.
       setError(err instanceof Error ? err.message : 'Could not add the department')
+    } finally {
+      setAddingDept(false)
     }
   }
 
@@ -144,7 +162,9 @@ export default function Setup() {
 
       <section className="space-y-3">
         <h2 className="font-semibold text-gray-900">Teachers</h2>
-        {users.length === 0 ? (
+        {!usersLoaded ? (
+          <p className="text-sm text-gray-400">Loading teachers…</p>
+        ) : users.length === 0 ? (
           <p className="text-sm text-gray-400">No teacher accounts yet.</p>
         ) : (
           <ul className="divide-y divide-gray-100 rounded-xl border border-gray-200 bg-white">
@@ -232,6 +252,15 @@ export default function Setup() {
             Departments
           </button>
         </h2>
+        {/* The section is collapsed by default, so on a fresh archive this hint
+            is the only thing visible above the fold — without it the add form
+            (and the way to reach it) sits behind a closed heading and a manager
+            with zero departments has no obvious next step. */}
+        {departments.length === 0 && (
+          <p className="text-sm text-gray-400">
+            No departments yet. Open this section to add the first one.
+          </p>
+        )}
         {/* Kept in the tree and toggled with the `hidden` attribute so the
             heading's aria-controls always points at a real element. */}
         <div id="departments-body" className="space-y-3" hidden={!showDepartments}>
@@ -253,14 +282,15 @@ export default function Setup() {
           />
           <button
             type="submit"
-            className="inline-flex items-center justify-center gap-1.5 rounded-lg bg-brand-600 px-3 py-2.5 text-sm font-semibold text-white transition hover:bg-brand-700 sm:pointer-fine:py-2"
+            disabled={addingDept}
+            className="inline-flex items-center justify-center gap-1.5 rounded-lg bg-brand-600 px-3 py-2.5 text-sm font-semibold text-white transition hover:bg-brand-700 disabled:opacity-50 sm:pointer-fine:py-2"
           >
-            <Plus className="h-4 w-4" /> Add
+            <Plus className="h-4 w-4" /> {addingDept ? 'Adding…' : 'Add'}
           </button>
         </form>
         {departments.length === 0 ? (
           <p className="text-sm text-gray-400">
-            No departments yet. Add one to assign teachers.
+            Add one to assign teachers.
           </p>
         ) : (
           <ul className="divide-y divide-gray-100 rounded-xl border border-gray-200 bg-white">
@@ -305,32 +335,38 @@ export default function Setup() {
                       <Trash2 className="h-4 w-4" />
                     </button>
                   </div>
-                  {expanded && (
-                    <div id={panelId} className="border-t border-gray-100 bg-gray-50/60 px-4 py-3">
-                      {members.length === 0 ? (
-                        <p className="text-sm text-gray-400">
-                          No teachers assigned to this department.
-                        </p>
-                      ) : (
-                        <ul className="space-y-2">
-                          {members.map((m) => (
-                            <li key={m.id} className="flex min-w-0 items-center gap-2 text-sm">
-                              <Users
-                                aria-hidden="true"
-                                className="h-3.5 w-3.5 shrink-0 text-gray-400"
-                              />
-                              <span className="min-w-0 truncate font-medium text-gray-800">
-                                {m.name}
-                              </span>
-                              <span className="min-w-0 truncate text-xs text-gray-500">
-                                {m.email}
-                              </span>
-                            </li>
-                          ))}
-                        </ul>
-                      )}
-                    </div>
-                  )}
+                  {/* Kept in the tree and hidden with the attribute rather than
+                      conditionally rendered: the row button's aria-controls
+                      names this panel, and an attribute is the only way that id
+                      still resolves while the row is collapsed. */}
+                  <div
+                    id={panelId}
+                    className="border-t border-gray-100 bg-gray-50/60 px-4 py-3"
+                    hidden={!expanded}
+                  >
+                    {members.length === 0 ? (
+                      <p className="text-sm text-gray-400">
+                        No teachers assigned to this department.
+                      </p>
+                    ) : (
+                      <ul className="space-y-2">
+                        {members.map((m) => (
+                          <li key={m.id} className="flex min-w-0 items-center gap-2 text-sm">
+                            <Users
+                              aria-hidden="true"
+                              className="h-3.5 w-3.5 shrink-0 text-gray-400"
+                            />
+                            <span className="min-w-0 truncate font-medium text-gray-800">
+                              {m.name}
+                            </span>
+                            <span className="min-w-0 truncate text-xs text-gray-500">
+                              {m.email}
+                            </span>
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                  </div>
                 </li>
               )
             })}

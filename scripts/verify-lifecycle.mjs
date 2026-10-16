@@ -2,10 +2,21 @@ import { readdirSync, readFileSync, existsSync } from 'node:fs'
 import { createServer } from 'vite'
 
 const DAY = 86400000
+// The app pins every event time to +05:30, so a "day" in these fixtures must be
+// a day in that zone, not the machine's. With the local getters, `dateOffset(0)`
+// names a calendar date a day ahead of the app's own for anyone east of IST
+// (Australia/Sydney, …), and the "spanning now" event starts in the future — the
+// suite then reports a false failure for a rule that is working.
+const APP_ZONE_OFFSET_MS = 5.5 * 60 * 60 * 1000
+
+function isoDate(ms) {
+  const d = new Date(ms + APP_ZONE_OFFSET_MS)
+  return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}-${String(d.getUTCDate()).padStart(2, '0')}`
+}
 
 function ev(overrides = {}) {
   const d = new Date(Date.now() - 10 * DAY)
-  const date = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+  const date = isoDate(d.getTime())
   return {
     id: 'e1',
     title: 'T',
@@ -25,8 +36,7 @@ function ev(overrides = {}) {
 }
 
 function dateOffset(days) {
-  const d = new Date(Date.now() + days * DAY)
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+  return isoDate(Date.now() + days * DAY)
 }
 
 let failed = 0
@@ -588,10 +598,13 @@ check('app: a non-manager is never offered photo uploads',
 // DELETE, so a write that reuses a path would be refused for a non-manager —
 // the second cover upload of the event would be the one to fail. Every upload is
 // therefore a fresh insert: no upsert anywhere, and the cover's file name is
-// stamped like the report's.
+// stamped like the report's. The extension is the file's own, because a cover
+// that is not re-encoded is stored as-is — a PNG named `.jpg` would be a lie.
 check('app: no upload reuses a storage path', /upsert:/.test(storageSrc), false)
 check('app: the cover filename is stamped like every other upload',
-  /\$\{Date\.now\(\)\}-cover\.jpg/.test(storageSrc), true)
+  /\$\{Date\.now\(\)\}-cover\$\{coverExtension\(file\)\}/.test(storageSrc), true)
+check('app: the cover extension follows the source file',
+  /function coverExtension\(file: File\): string/.test(storageSrc), true)
 // The edit form is a signing site too: it put the stored path straight into
 // `src`, which asks the site for a file it does not have and renders a broken
 // image. It signs like everywhere else now, and only for a manager.

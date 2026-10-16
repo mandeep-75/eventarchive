@@ -17,6 +17,10 @@ export default function Layout() {
           goes back to the normal gutter. */}
       <main className="min-h-0 flex-1 overflow-y-auto p-4 pb-20 lg:p-6">
         <Outlet />
+        {/* The tab bar's own padding already grew by the safe-area inset, so the
+            inset has to be added below the scrolling content too — otherwise the
+            last card sits under the home indicator on a notched phone. */}
+        <div aria-hidden="true" className="h-[env(safe-area-inset-bottom)] lg:hidden" />
       </main>
       <BottomNav />
     </div>

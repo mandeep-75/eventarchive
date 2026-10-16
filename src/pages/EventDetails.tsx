@@ -318,11 +318,15 @@ export default function EventDetails() {
             />
           ) : (
             // The bucket is readable by managers only, so a set cover is not
-            // "missing" for everyone else — it is simply not shown to them.
+            // "missing" for everyone else — it is simply not shown to them. A
+            // manager whose signature is still in flight is not being denied it,
+            // so the managers-only copy is reserved for non-managers.
             <NoImage
               className="h-full w-full"
               label={
-                current.coverImage ? 'Cover visible to managers only' : 'No cover image set'
+                current.coverImage && !isManager
+                  ? 'Cover visible to managers only'
+                  : 'No cover image set'
               }
             />
           )}

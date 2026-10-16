@@ -24,7 +24,13 @@ export default function Navbar() {
   const navItems = NAV_ITEMS.filter((item) => !item.managerOnly || isManager)
 
   async function handleLogout() {
-    await logout()
+    // A refused sign-out must not trap the user on the page — send them to the
+    // login screen either way.
+    try {
+      await logout()
+    } catch {
+      // ignore; the redirect below is the point
+    }
     navigate('/login')
   }
 

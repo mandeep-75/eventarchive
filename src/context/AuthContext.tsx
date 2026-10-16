@@ -9,6 +9,14 @@ interface AuthContextValue {
   profile: UserProfile | null
   loading: boolean
   isManager: boolean
+  /**
+   * Set when the profile read failed (as opposed to succeeding with no row).
+   * Only consulted while `profile` is null — see ProtectedRoute — so a blip on
+   * a later realtime refetch never blanks a working session.
+   */
+  profileError: string
+  /** Re-runs the profile read. The way out of a failed first fetch. */
+  retryProfile: () => void
 }
 
 const AuthContext = createContext<AuthContextValue | undefined>(undefined)
@@ -17,6 +25,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null)
   const [profile, setProfile] = useState<UserProfile | null>(null)
   const [loading, setLoading] = useState(true)
+  const [profileError, setProfileError] = useState('')
+  // Bumping this re-runs the profile effect below: the only way to retry a
+  // refused or dropped read without reloading the page.
+  const [profileAttempt, setProfileAttempt] = useState(0)
   // Which account the state above currently reflects. Supabase emits an auth
   // event for a token refresh, a page focus and the initial session alike, each
   // handing down a new User object for the same account. Treating those as a
@@ -47,11 +59,29 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     if (!user) return
-    return subscribeUser(user.id, (p) => {
-      setProfile(p)
-      setLoading(false)
-    })
-  }, [user])
+    let active = true
+    const unsub = subscribeUser(
+      user.id,
+      (p) => {
+        if (!active) return
+        setProfile(p)
+        setProfileError('')
+        setLoading(false)
+      },
+      (message) => {
+        if (!active) return
+        // Do not clear `profile`: a transient failure on a realtime refetch must
+        // not blank an app that is already working. This only ever reaches the
+        // screen when there is no profile to show instead.
+        setProfileError(message)
+        setLoading(false)
+      },
+    )
+    return () => {
+      active = false
+      unsub()
+    }
+  }, [user, profileAttempt])
 
   return (
     <AuthContext.Provider
@@ -60,6 +90,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         profile,
         loading,
         isManager: profile?.isManager === true,
+        profileError,
+        retryProfile: () => {
+          setProfileError('')
+          setLoading(true)
+          setProfileAttempt((n) => n + 1)
+        },
       }}
     >
       {children}

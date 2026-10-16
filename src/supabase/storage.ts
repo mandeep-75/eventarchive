@@ -86,6 +86,27 @@ function withExtension(name: string, ext: string): string {
   return dot > 0 ? name.slice(0, dot) + ext : name + ext
 }
 
+/**
+ * The extension a cover is stored under before it is compressed.
+ *
+ * `compressImage` may decline to re-encode (a browser that cannot decode the
+ * format, or an already-optimised file), and then the original bytes are stored
+ * as-is — so the name must carry the file's real extension. A HEIC or PNG cover
+ * labelled `.jpg` is the exact name/bytes mismatch the note in `upload` forbids.
+ * When compression does happen, `withExtension` swaps in the re-encoded type.
+ */
+function coverExtension(file: File): string {
+  const dot = file.name.lastIndexOf('.')
+  if (dot > 0) {
+    const ext = file.name.slice(dot).toLowerCase()
+    if (/^\.[a-z0-9]{2,5}$/.test(ext)) return ext
+  }
+  if (file.type === 'image/png') return '.png'
+  if (file.type === 'image/webp') return '.webp'
+  if (file.type === 'image/gif') return '.gif'
+  return '.jpg'
+}
+
 function canvasToBlob(canvas: HTMLCanvasElement, type: string, quality: number) {
   return new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, type, quality))
 }
@@ -216,9 +237,12 @@ async function upload(
   // is left behind. Nothing in the app reads it any more, and reclaiming the
   // bytes would need a delete control that is managers-only anyway.
   const { error } = await supabase.storage.from(BUCKET).upload(path, body, {
-    // Sent explicitly so a File with an empty or odd `type` still lands as an
-    // image rather than application/octet-stream.
-    contentType: compressed ? compressed.type : file.type || 'image/jpeg',
+    // Sent explicitly so a File with an empty or odd `type` still lands with a
+    // usable Content-Type. A report must not fall back to `image/jpeg`: a .docx
+    // whose browser-reported type is empty would otherwise be stored as a JPEG.
+    contentType: compressed
+      ? compressed.type
+      : file.type || (isReport ? 'application/octet-stream' : 'image/jpeg'),
     cacheControl: CACHE_CONTROL,
   })
   if (error) {
@@ -231,7 +255,7 @@ async function upload(
 
 /** Stamped like every other upload, so replacing a cover never rewrites a path. */
 export function uploadCoverImage(eventId: string, file: File) {
-  return upload(file, eventId, 'cover', `${Date.now()}-cover.jpg`)
+  return upload(file, eventId, 'cover', `${Date.now()}-cover${coverExtension(file)}`)
 }
 
 export function uploadReport(eventId: string, file: File) {

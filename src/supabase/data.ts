@@ -41,6 +41,21 @@ function subscribeTable(
   onData: (rows: Record<string, any>[]) => void,
   onError?: (message: string) => void,
 ): Unsubscribe {
+  let cancelled = false
+  // The SDK rejoins the channel by itself after a drop, and fires `SUBSCRIBED`
+  // again when it does — but every change that landed while it was down was
+  // never delivered. Refetching on the *second* and later `SUBSCRIBED` is what
+  // closes that gap; the first is the initial connect, which already fetches
+  // below. Without it a sleeping laptop wakes to a silently stale list, which is
+  // the very "connected but never delivers" failure the realtime publication is
+  // there to avoid.
+  let joined = false
+  // Realtime can deliver a short burst, and each payload refetches the whole
+  // table. Responses are not guaranteed to arrive in order, so an older snapshot
+  // must never overwrite a newer one: the sequence number lets only the last
+  // request issued land.
+  let seq = 0
+
   const channel: RealtimeChannel = supabase
     .channel(uniqueTopic(`${table}-changes`))
     .on(
@@ -51,16 +66,25 @@ function subscribeTable(
       },
     )
     .subscribe((status) => {
+      if (status === 'SUBSCRIBED') {
+        if (joined) {
+          // A rejoin means the connection recovered: clear any error banner and
+          // refill whatever changed during the gap.
+          onError?.('')
+          void refetch()
+        }
+        joined = true
+        return
+      }
       if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
         onError?.(`Lost the live connection to ${table}.`)
       }
     })
 
-  let cancelled = false
-
   async function refetch() {
+    const mine = ++seq
     const { data, error } = await supabase.from(table).select('*')
-    if (cancelled) return
+    if (cancelled || mine !== seq) return
     if (error) {
       onError?.(error.message)
       return
@@ -81,7 +105,11 @@ function subscribeTable(
 export function subscribeUser(
   uid: string,
   onData: (user: UserProfile | null) => void,
+  onError?: (message: string) => void,
 ): Unsubscribe {
+  let cancelled = false
+  let joined = false
+  let seq = 0
   const channel = supabase
     .channel(uniqueTopic(`profile`))
     .on(
@@ -91,18 +119,37 @@ export function subscribeUser(
         void refetch()
       },
     )
-    .subscribe()
-
-  let cancelled = false
+    .subscribe((status) => {
+      if (status === 'SUBSCRIBED') {
+        if (joined) {
+          onError?.('')
+          void refetch()
+        }
+        joined = true
+        return
+      }
+      if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
+        onError?.('Lost the live connection to your account.')
+      }
+    })
 
   async function refetch() {
+    const mine = ++seq
     const { data, error } = await supabase
       .from('profiles')
       .select('*')
       .eq('id', uid)
       .maybeSingle()
-    if (cancelled) return
-    onData(error || !data ? null : toProfile(data))
+    if (cancelled || mine !== seq) return
+    // A dropped fetch is not "no profile". Coercing the two together walls a
+    // valid account behind the "Account not set up" screen — with sign-out as
+    // the only way out — on any network blip. Only a successful read that comes
+    // back with no row means the login was never provisioned.
+    if (error) {
+      onError?.(error.message)
+      return
+    }
+    onData(data ? toProfile(data) : null)
   }
 
   void refetch()

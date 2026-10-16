@@ -1,5 +1,5 @@
 import { Navigate, Outlet, useLocation } from 'react-router-dom'
-import { LogOut, UserX } from 'lucide-react'
+import { AlertTriangle, LogOut, UserX } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
 import { logout } from '../supabase/auth'
 
@@ -12,7 +12,7 @@ function FullScreenLoader() {
 }
 
 export default function ProtectedRoute() {
-  const { user, profile, loading } = useAuth()
+  const { user, profile, loading, profileError, retryProfile } = useAuth()
   const location = useLocation()
 
   if (loading) return <FullScreenLoader />
@@ -21,9 +21,44 @@ export default function ProtectedRoute() {
     return <Navigate to="/login" state={{ from: location }} replace />
   }
 
-  // Accounts are provisioned manually, so a valid login can exist without a
-  // profile. Send them somewhere useful instead of rendering empty pages.
   if (!profile) {
+    // An error is not the same as "never provisioned". A dropped or refused
+    // read used to be shown as the "Account not set up" screen, which sent a
+    // perfectly valid teacher to a dead end whose only action was signing out.
+    // A transient failure gets a retry instead; only a successful read that
+    // returns no row means the login really was never provisioned.
+    if (profileError) {
+      return (
+        <div className="flex min-h-screen items-center justify-center bg-gray-50 px-4">
+          <div className="w-full max-w-sm rounded-xl border border-gray-200 bg-white p-6 text-center shadow-card">
+            <span className="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-xl bg-red-50 text-red-600 ring-1 ring-inset ring-red-600/10">
+              <AlertTriangle className="h-6 w-6" />
+            </span>
+            <h1 className="text-lg font-bold tracking-tight text-gray-900">
+              Could not load your account
+            </h1>
+            <p className="mt-2 text-sm text-gray-500">
+              Something went wrong reaching the server. Check your connection and try again.
+            </p>
+            <button
+              onClick={retryProfile}
+              className="mt-5 inline-flex w-full items-center justify-center gap-2 rounded-lg bg-brand-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-brand-700"
+            >
+              Try again
+            </button>
+            <button
+              onClick={() => logout()}
+              className="mt-2 inline-flex w-full items-center justify-center gap-2 rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-semibold text-gray-700 shadow-sm transition hover:bg-gray-50"
+            >
+              <LogOut className="h-4 w-4" /> Sign out
+            </button>
+          </div>
+        </div>
+      )
+    }
+
+    // Accounts are provisioned manually, so a valid login can exist without a
+    // profile. Send them somewhere useful instead of rendering empty pages.
     return (
       <div className="flex min-h-screen items-center justify-center bg-gray-50 px-4">
         <div className="w-full max-w-sm rounded-xl border border-gray-200 bg-white p-6 text-center shadow-card">

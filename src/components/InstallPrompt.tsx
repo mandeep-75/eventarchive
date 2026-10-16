@@ -61,6 +61,9 @@ export default function InstallPrompt() {
 
   function dismiss() {
     setVisible(false)
+    // Reset so reopening shows the Install button again rather than the iOS
+    // steps left over from a previous dismissal.
+    setSteps(false)
     try {
       localStorage.setItem(DISMISS_KEY, String(Date.now()))
     } catch {
