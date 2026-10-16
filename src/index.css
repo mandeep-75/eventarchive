@@ -23,30 +23,32 @@
     ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, monospace;
 
   /* Brand — primary action accent. */
-  --color-brand-50: #eef7f5;
-  --color-brand-100: #d5ece7;
-  --color-brand-200: #add9d1;
-  --color-brand-300: #7dbeb4;
-  --color-brand-400: #4d9d94;
-  --color-brand-500: #2f8078;
-  --color-brand-600: #237066;
-  --color-brand-700: #1e5a53;
-  --color-brand-800: #1b4944;
-  --color-brand-900: #193d39;
-  --color-brand-950: #0b2321;
+/* Brand — primary action accent. */
+--color-brand-50:  #FFF4E9;
+--color-brand-100: #FFE3C7;
+--color-brand-200: #FFCD9E;
+--color-brand-300: #FFB574;
+--color-brand-400: #FF9D4D;
+--color-brand-500: #FF8827;
+--color-brand-600: #E87518;
+--color-brand-700: #C85D0B;
+--color-brand-800: #9F4909;
+--color-brand-900: #713306;
+--color-brand-950: #401B03;
 
   /* Neutral — cool, low-chroma. Overrides Tailwind's default gray. */
-  --color-gray-50: #f7f9f9;
-  --color-gray-100: #eef1f2;
-  --color-gray-200: #e0e5e6;
-  --color-gray-300: #c9d1d3;
-  --color-gray-400: #93a0a3;
-  --color-gray-500: #6b787c;
-  --color-gray-600: #4f5b5f;
-  --color-gray-700: #3a4448;
-  --color-gray-800: #272f32;
-  --color-gray-900: #161d1f;
-  --color-gray-950: #0c1113;
+/* Gray — neutral interface colors. */
+--color-gray-50:  #F0F4FA;
+--color-gray-100: #DCE5F2;
+--color-gray-200: #B9CBE5;
+--color-gray-300: #8DAAD4;
+--color-gray-400: #5F86BD;
+--color-gray-500: #3766A0;
+--color-gray-600: #204D85;
+--color-gray-700: #163B6C;
+--color-gray-800: #0D2F5C;
+--color-gray-900: #00255D;
+--color-gray-950: #001438;
 
   /* Semantic status colours. The five derived statuses and every banner read
    * from these, so "amber means waiting" is set in one place. */

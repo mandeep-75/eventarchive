@@ -17,5 +17,5 @@ export interface NavItem {
 // Dashboard entry: the list it linked to is the whole app's front page.
 export const NAV_ITEMS: NavItem[] = [
   { to: '/events', label: 'Events', icon: ListTodo },
-  { to: '/setup', label: 'Setup', icon: Settings, managerOnly: true },
+  { to: '/setup', label: 'Control Panel', icon: Settings, managerOnly: true },
 ]
